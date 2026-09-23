@@ -3,9 +3,10 @@
 import { create } from "zustand";
 import { configAchievements, launchAchievements } from "./achievements";
 import type { AIResult } from "./ai/actions";
-import { getAIProvider } from "./ai/client";
+import { getAIProvider, OFFLINE_LABEL } from "./ai/client";
 import { generateName } from "./ai/names";
 import type { HistoryEntry } from "./ai/provider";
+import { ProviderUnavailableError } from "./ai/remote-provider";
 import { loadAchievements, saveAchievements, saveSession } from "./persistence";
 import { applyActions } from "./rocket/apply";
 import {
@@ -163,6 +164,23 @@ export const useBuilder = create<BuilderState>((set, get) => {
     }
   };
 
+  const fail = (error: unknown) => {
+    const offline = error instanceof ProviderUnavailableError;
+    set({
+      busy: false,
+      providerLabel: offline ? getAIProvider().label : get().providerLabel,
+      messages: [
+        ...get().messages,
+        message(
+          "ai",
+          offline
+            ? "No AI engineer is connected. The control room is empty."
+            : "Something shorted out in the control room. Try again.",
+        ),
+      ],
+    });
+  };
+
   return {
     rocket: createStarterRocket(),
     past: [],
@@ -173,7 +191,7 @@ export const useBuilder = create<BuilderState>((set, get) => {
     attempt: 0,
     plan: null,
     lastPrompt: "",
-    providerLabel: "LOCAL ENGINEER",
+    providerLabel: OFFLINE_LABEL,
     unlocked: [],
     toasts: [],
     changeTick: 0,
@@ -195,17 +213,8 @@ export const useBuilder = create<BuilderState>((set, get) => {
           mode: "modify",
         });
         applyResult(result, prompt);
-      } catch {
-        set({
-          busy: false,
-          messages: [
-            ...get().messages,
-            message(
-              "ai",
-              "Something shorted out in the control room. Try again.",
-            ),
-          ],
-        });
+      } catch (error) {
+        fail(error);
       }
     },
 
@@ -228,8 +237,8 @@ export const useBuilder = create<BuilderState>((set, get) => {
           mission,
         });
         applyResult(result, prompt);
-      } catch {
-        set({ busy: false });
+      } catch (error) {
+        fail(error);
       }
     },
 

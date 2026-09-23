@@ -16,7 +16,7 @@ make fmt
 make lint
 ```
 
-`next dev` proxies `/api` to the Go API. Without `OPENROUTER_API_KEY` the API still starts and the app falls back to its local keyword engineer. `OPENROUTER_MODEL` can select another model that supports structured outputs. The app detects the provider via `GET /api/ai`. API docs are at `/api/docs`.
+`next dev` proxies `/api` to the Go API. Without `OPENROUTER_API_KEY` the API still starts but the AI engineer is offline. `OPENROUTER_MODEL` can select another model that supports structured outputs. The app detects the provider via `GET /api/ai`. API docs are at `/api/docs`.
 
 ## Docker production
 
@@ -45,7 +45,7 @@ The Deploy workflow runs on the self-hosted GitHub Actions runner, reads the rep
 | Physics model: propellants, nozzles, engine thrust/Isp, masses, drag, centre of pressure, Δv breakdown, failure risks | `web/src/lib/rocket/physics.ts` |
 | Stats (TWR, Δv, stability, reliability) and joke meters | `web/src/lib/rocket/stats.ts` |
 | AI action schema and output validation | `web/src/lib/ai/actions.ts` |
-| Provider interface, local engineer, remote provider, auto-fallback | `web/src/lib/ai/{provider,local-provider,local-interpreter,remote-provider,client}.ts` |
+| Provider interface, hosted-model client | `web/src/lib/ai/{provider,remote-provider,client}.ts` |
 | Hosted engineer (OpenRouter via `joakimcarlsson/ai`, structured outputs) and endpoint | `internal/engineer`, `internal/httpx/ai_endpoint.go` |
 | Flight integrator: 2D ascent around a rotating Earth with guidance, throttling, staging, control loss, max-Q breakup and seeded hardware failures | `web/src/lib/sim/flight.ts` |
 | Launch plan: outcome, compressed animation timeline, report, staging summary | `web/src/lib/sim/simulate.ts` |

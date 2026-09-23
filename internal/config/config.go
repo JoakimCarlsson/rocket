@@ -38,7 +38,7 @@ type Config struct {
 
 // OpenRouter is the hosted model the AI engineer talks to. APIKey empty means
 // no hosted model: the API still starts and reports it unavailable, and the
-// web app falls back to its local engineer.
+// web app shows the engineer as offline.
 type OpenRouter struct {
 	APIKey string // OPENROUTER_API_KEY
 	// Model must support strict structured outputs.

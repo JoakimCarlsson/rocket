@@ -1,4 +1,4 @@
-/** Friendly colour names the AI and the local interpreter understand. */
+/** Friendly colour names the AI engineer understands. */
 export const NAMED_COLORS: Record<string, string> = {
   black: "#111111",
   white: "#f2f2ee",

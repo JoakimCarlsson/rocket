@@ -1,21 +1,23 @@
 import type { AIResult } from "./actions";
-import { LocalProvider } from "./local-provider";
 import type { AIProvider, InterpretRequest } from "./provider";
-import { fetchProviderStatus, RemoteProvider } from "./remote-provider";
+import {
+  fetchProviderStatus,
+  ProviderUnavailableError,
+  RemoteProvider,
+} from "./remote-provider";
 
-/**
- * Provider used by the UI: prefers the hosted model when the server has one configured
- * and silently falls back to the local engineer when it is missing or fails.
- */
-export class AutoProvider implements AIProvider {
-  readonly id = "auto";
-  private readonly local = new LocalProvider();
+/** Label shown while no hosted model is configured. */
+export const OFFLINE_LABEL = "OFFLINE";
+
+/** Provider used by the UI: the hosted model behind `/api/ai`, once the server reports one. */
+export class EngineerClient implements AIProvider {
+  readonly id = "engineer";
   private remote: RemoteProvider | null = null;
   private status: Promise<void> | null = null;
 
-  /** Label of the provider that will currently answer. */
+  /** Label of the model that will answer, or OFFLINE when there is none. */
   get label(): string {
-    return this.remote?.label ?? this.local.label;
+    return this.remote?.label ?? OFFLINE_LABEL;
   }
 
   /** Resolves the server status once and remembers it. */
@@ -27,39 +29,20 @@ export class AutoProvider implements AIProvider {
     return this.status;
   }
 
-  /**
-   * Interprets with the best available provider. `provider` on the result names whoever
-   * actually answered, so the UI never claims the hosted model did when it fell back.
-   */
+  /** Interprets with the hosted model. Throws ProviderUnavailableError when none is configured. */
   async interpret(request: InterpretRequest): Promise<AIResult> {
     await this.detect();
-    if (this.remote) {
-      try {
-        const result = await this.remote.interpret(request);
-        if (result.actions.length > 0 || result.response)
-          return { ...result, provider: this.remote.label };
-        console.warn(
-          "Hosted model returned nothing usable; using the local engineer.",
-        );
-      } catch (error) {
-        console.warn("Hosted model failed; using the local engineer.", error);
-      }
-      return {
-        ...(await this.local.interpret(request)),
-        provider: `${this.local.label} (FALLBACK)`,
-      };
-    }
-    return {
-      ...(await this.local.interpret(request)),
-      provider: this.local.label,
-    };
+    if (!this.remote)
+      throw new ProviderUnavailableError("No hosted model is configured");
+    const result = await this.remote.interpret(request);
+    return { ...result, provider: this.remote.label };
   }
 }
 
-let shared: AutoProvider | null = null;
+let shared: EngineerClient | null = null;
 
 /** Returns the app-wide AI provider. */
-export function getAIProvider(): AutoProvider {
-  shared ??= new AutoProvider();
+export function getAIProvider(): EngineerClient {
+  shared ??= new EngineerClient();
   return shared;
 }

@@ -79,7 +79,7 @@ func run() error {
 		slog.InfoContext(ctx, "hosted engineer", "model", cfg.OpenRouter.Model)
 	} else {
 		slog.WarnContext(ctx, "OPENROUTER_API_KEY unset; "+
-			"the web app will use its local engineer")
+			"the AI engineer is offline")
 	}
 
 	srv := httpx.New(
