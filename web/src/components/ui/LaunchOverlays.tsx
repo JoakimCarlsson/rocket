@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import type { LaunchCue, Telemetry } from "@/components/three/LaunchScene";
 import { achievementById } from "@/lib/achievements";
+import { NO_RESTORE } from "@/lib/dom";
 import type { LaunchPlan } from "@/lib/sim/simulate";
 import { Icon } from "./Icon";
 
@@ -247,6 +248,7 @@ export function MissionReportCard({
             <button
               onClick={onRepair}
               disabled={busy}
+              {...NO_RESTORE}
               className="col-span-2 flex h-12 items-center justify-center gap-2 rounded-xl bg-accent font-display text-[13px] font-bold tracking-[0.1em] text-black disabled:opacity-50"
             >
               <Icon name="wrench" size={16} /> REPAIR WITH AI

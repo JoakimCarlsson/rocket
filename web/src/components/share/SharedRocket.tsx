@@ -8,6 +8,7 @@ import { OutcomeBadge } from "@/components/explore/OutcomeBadge";
 import { Wordmark } from "@/components/ui/BrandRail";
 import { Icon } from "@/components/ui/Icon";
 import { get2DContext } from "@/lib/canvas";
+import { NO_RESTORE } from "@/lib/dom";
 import { STAT_META } from "@/lib/format";
 import { handOff } from "@/lib/persistence";
 import { computeStats } from "@/lib/rocket/stats";
@@ -264,6 +265,7 @@ function ShareCard({
       <button
         onClick={download}
         disabled={busy}
+        {...NO_RESTORE}
         className="flex h-12 items-center gap-2 rounded-xl bg-accent px-6 font-display text-[13px] font-bold tracking-[0.1em] text-black disabled:opacity-50"
       >
         <Icon name="download" size={16} /> DOWNLOAD PNG

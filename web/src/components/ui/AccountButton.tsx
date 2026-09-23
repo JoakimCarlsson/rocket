@@ -2,6 +2,7 @@
 
 import { signIn } from "@/lib/account/api";
 import { useOptionalSession, useSessionLoading } from "@/lib/account/session";
+import { NO_RESTORE } from "@/lib/dom";
 import { RailButton } from "./BrandRail";
 
 /** Rail control that signs in with Google, or out once signed in. */
@@ -28,7 +29,12 @@ export function AccountHeaderButton() {
     "flex items-center gap-2 rounded-xl border border-line px-3 py-2 font-mono text-[10.5px] tracking-[0.14em] text-muted transition-colors hover:text-text disabled:opacity-30";
   if (!session)
     return (
-      <button onClick={signIn} disabled={loading} className={className}>
+      <button
+        onClick={signIn}
+        disabled={loading}
+        {...NO_RESTORE}
+        className={className}
+      >
         SIGN IN
       </button>
     );

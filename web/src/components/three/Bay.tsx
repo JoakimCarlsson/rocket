@@ -4,7 +4,6 @@ import {
   ContactShadows,
   Environment,
   Grid,
-  Html,
   Lightformer,
   OrbitControls,
   Sparkles,
@@ -14,7 +13,7 @@ import { useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import type { OrbitControls as OrbitControlsImpl } from "three-stdlib";
 import { get2DContext } from "@/lib/canvas";
-import type { PlacedPart, RocketLayout } from "@/lib/rocket/layout";
+import type { PartLabel, PlacedPart, RocketLayout } from "@/lib/rocket/layout";
 import type { RocketConfig } from "@/lib/rocket/types";
 import { RocketModel } from "./RocketModel";
 
@@ -325,8 +324,9 @@ function CeilingStrips({ height }: { height: number }) {
 }
 
 /**
- * Small technical callouts anchored to parts of the rocket. They stay mounted and fade out
- * when hidden, because unmounting drei's Html mid-commit tears its DOM portal.
+ * Small technical callouts anchored to parts of the rocket. They are plain DOM nodes laid
+ * over the canvas and moved every frame, rather than drei's Html, which gives each label a
+ * React root of its own and tears it down mid-render when the parts change.
  */
 function Labels({
   layout,
@@ -335,36 +335,75 @@ function Labels({
   layout: RocketLayout;
   visible: boolean;
 }) {
-  return (
-    <>
-      {layout.labels.map((label) => {
-        const x =
-          label.side === "right"
-            ? Math.abs(label.position[0])
-            : -Math.abs(label.position[0]);
-        return (
-          <Html
-            key={label.key}
-            position={[x, label.position[1], 0]}
-            zIndexRange={[10, 0]}
-            style={{
-              pointerEvents: "none",
-              opacity: visible ? 1 : 0,
-              transition: "opacity 300ms",
-            }}
-          >
-            <div
-              className={`bay-label ${label.side === "left" ? "bay-label--left" : ""}`}
-            >
-              <span className="bay-label__line" />
-              <span className="bay-label__title">{label.title}</span>
-              <span className="bay-label__detail">{label.detail}</span>
-            </div>
-          </Html>
-        );
-      })}
-    </>
-  );
+  const { gl, camera, size } = useThree();
+  const anchor = useRef<THREE.Group>(null);
+  const nodes = useRef<HTMLDivElement[]>([]);
+  const point = useMemo(() => new THREE.Vector3(), []);
+  const overlay = useMemo(() => {
+    const el = document.createElement("div");
+    el.style.cssText =
+      "position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:10;transition:opacity 300ms;";
+    return el;
+  }, []);
+
+  useEffect(() => {
+    gl.domElement.parentElement?.appendChild(overlay);
+    return () => overlay.remove();
+  }, [gl, overlay]);
+
+  useEffect(() => {
+    nodes.current = layout.labels.map(labelNode);
+    overlay.replaceChildren(...nodes.current);
+  }, [overlay, layout.labels]);
+
+  useEffect(() => {
+    overlay.style.opacity = visible ? "1" : "0";
+  }, [overlay, visible]);
+
+  useFrame(() => {
+    const group = anchor.current;
+    if (!group) return;
+    layout.labels.forEach((label, i) => {
+      const node = nodes.current[i];
+      if (!node) return;
+      point
+        .set(labelX(label), label.position[1], 0)
+        .applyMatrix4(group.matrixWorld)
+        .project(camera);
+      const x = ((point.x + 1) / 2) * size.width;
+      const y = ((1 - point.y) / 2) * size.height;
+      node.style.transform = `translate3d(${x}px,${y}px,0)`;
+      node.style.visibility = point.z > 1 ? "hidden" : "visible";
+    });
+  });
+
+  return <group ref={anchor} />;
+}
+
+/** The horizontal offset of a label, pushed out to the side it reads from. */
+function labelX(label: PartLabel): number {
+  const x = Math.abs(label.position[0]);
+  return label.side === "right" ? x : -x;
+}
+
+/** Builds the DOM for one callout: a leader line, a title and a detail. */
+function labelNode(label: PartLabel): HTMLDivElement {
+  const wrapper = document.createElement("div");
+  wrapper.style.cssText = "position:absolute;top:0;left:0;";
+  const body = document.createElement("div");
+  body.className = `bay-label ${label.side === "left" ? "bay-label--left" : ""}`;
+  for (const [className, text] of [
+    ["bay-label__line", ""],
+    ["bay-label__title", label.title],
+    ["bay-label__detail", label.detail],
+  ]) {
+    const span = document.createElement("span");
+    span.className = className;
+    span.textContent = text;
+    body.appendChild(span);
+  }
+  wrapper.appendChild(body);
+  return wrapper;
 }
 
 /** Orbit controls that frame the rocket, auto-rotate while idle and re-frame after changes. */

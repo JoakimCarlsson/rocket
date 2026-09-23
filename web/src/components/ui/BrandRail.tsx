@@ -3,6 +3,7 @@
 import { AnimatePresence, motion } from "motion/react";
 import Link from "next/link";
 import { useEffect, useRef } from "react";
+import { NO_RESTORE } from "@/lib/dom";
 import type { Message } from "@/lib/store";
 import { AccountRailButton } from "./AccountButton";
 import { Icon, type IconName } from "./Icon";
@@ -48,7 +49,12 @@ export function RailButton({
     );
   }
   return (
-    <button onClick={onClick} disabled={disabled} className={className}>
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      {...NO_RESTORE}
+      className={className}
+    >
       {content}
     </button>
   );

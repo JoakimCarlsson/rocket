@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { signIn } from "@/lib/account/api";
 import { useOptionalSession } from "@/lib/account/session";
+import { NO_RESTORE } from "@/lib/dom";
 import { type FeedPost, publishRocket } from "@/lib/feed/api";
 import type { RocketConfig } from "@/lib/rocket/types";
 import { encodeShare, sharePath, shareUrl } from "@/lib/share";
@@ -177,7 +178,12 @@ function PublishButton({
   };
   return (
     <>
-      <button onClick={publish} disabled={busy} className={className}>
+      <button
+        onClick={publish}
+        disabled={busy}
+        {...NO_RESTORE}
+        className={className}
+      >
         <Icon name="explore" size={14} />
         {busy ? "PUBLISHING…" : "PUBLISH TO EXPLORE"}
       </button>

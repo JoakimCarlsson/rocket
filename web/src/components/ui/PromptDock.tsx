@@ -2,6 +2,7 @@
 
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
+import { NO_RESTORE } from "@/lib/dom";
 import { Icon } from "./Icon";
 
 const FIRST_SUGGESTIONS = [
@@ -147,6 +148,7 @@ export function PromptDock({
             transition={{ delay: 0.05 * i + (firstTime ? 0.8 : 0) }}
             onClick={() => submit(s)}
             disabled={busy}
+            {...NO_RESTORE}
             className="shrink-0 rounded-full border border-line-strong bg-black/40 px-3 py-1 text-[12px] whitespace-nowrap text-text/80 backdrop-blur transition-colors hover:border-accent/70 hover:text-text disabled:opacity-40"
           >
             {s}
@@ -173,6 +175,7 @@ export function PromptDock({
         <button
           onClick={() => submit()}
           disabled={busy || !value.trim()}
+          {...NO_RESTORE}
           className="flex h-11 items-center gap-2 rounded-xl bg-text px-4 font-mono text-[11px] font-medium tracking-[0.16em] text-black transition hover:bg-white disabled:bg-white/10 disabled:text-faint"
         >
           {firstTime ? "GENERATE" : "MODIFY"}
@@ -184,6 +187,7 @@ export function PromptDock({
         <button
           onClick={onUndo}
           disabled={!canUndo || busy}
+          {...NO_RESTORE}
           className="flex h-12 items-center gap-2 rounded-xl border border-line px-3.5 font-mono text-[10.5px] tracking-[0.16em] text-muted transition hover:border-line-strong hover:text-text disabled:opacity-30"
         >
           <Icon name="undo" size={14} />
@@ -192,6 +196,7 @@ export function PromptDock({
         <button
           onClick={onRandomize}
           disabled={busy}
+          {...NO_RESTORE}
           className="flex h-12 items-center gap-2 rounded-xl border border-line px-3.5 font-mono text-[10.5px] tracking-[0.16em] text-muted transition hover:border-line-strong hover:text-text disabled:opacity-30"
         >
           <Icon name="dice" size={14} />
@@ -202,6 +207,7 @@ export function PromptDock({
           whileTap={{ scale: 0.97 }}
           onClick={onLaunch}
           disabled={busy}
+          {...NO_RESTORE}
           className="relative ml-auto flex h-12 flex-1 items-center justify-center gap-3 overflow-hidden rounded-xl bg-accent font-display text-[15px] font-extrabold tracking-[0.12em] text-black shadow-[0_0_40px_-6px_rgba(255,91,31,0.7)] transition disabled:opacity-50 sm:max-w-[260px]"
         >
           <span className="absolute inset-0 bg-[linear-gradient(110deg,transparent_30%,rgba(255,255,255,0.45)_50%,transparent_70%)] bg-[length:250%_100%] [animation:shine_3.2s_ease-in-out_infinite]" />
