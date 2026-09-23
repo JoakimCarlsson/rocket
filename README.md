@@ -9,7 +9,19 @@ npm install
 npm run dev        # http://localhost:3000
 ```
 
-No API key is needed: a local keyword interpreter plays the engineer. To use a hosted model through OpenRouter instead, copy `.env.example` to `.env.local` and set `OPENROUTER_API_KEY` (optionally `OPENROUTER_MODEL`, any model that supports structured outputs). The app detects it via `GET /api/ai` and falls back to the local engineer if a call fails.
+For local development, a local keyword interpreter can play the engineer. Production requires `OPENROUTER_API_KEY`: copy `.env.example` to `.env.local` and set the key. `OPENROUTER_MODEL` can select another model that supports structured outputs. The app detects the provider via `GET /api/ai` and falls back to the local engineer if a call fails.
+
+## Docker production
+
+Set `OPENROUTER_API_KEY` in `.env.local`, then build and start the production container:
+
+```bash
+docker compose --env-file .env.local up --build -d
+```
+
+The app is available at http://localhost:3002. `OPENROUTER_MODEL` is optional; Compose requires the API key before starting. Stop it with `docker compose down`.
+
+Pushes to `main` also deploy through the self-hosted GitHub Actions runner. The workflow reads the repository's `OPENROUTER_API_KEY` secret and checks `/api/ai` after starting the container.
 
 ## Pages
 

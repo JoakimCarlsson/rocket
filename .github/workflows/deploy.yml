@@ -1,0 +1,41 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    env:
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - name: Deploy
+        run: docker compose up -d --build --remove-orphans
+
+      - name: Verify the app is serving
+        run: |
+          for i in $(seq 1 30); do
+            id=$(docker compose ps -q web)
+            if [ -z "$id" ] || [ "$(docker inspect -f '{{.State.Running}}' "$id")" != "true" ]; then
+              echo "web is not running after $i attempt(s)"
+              break
+            fi
+            if response=$(curl -fsS --max-time 5 http://localhost:3002/api/ai); then
+              case "$response" in
+                *'"available":true'*) exit 0 ;;
+              esac
+            fi
+            sleep 2
+          done
+          docker compose ps -a
+          docker compose logs --tail=100
+          exit 1
