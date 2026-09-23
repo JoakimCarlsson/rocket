@@ -15,7 +15,7 @@ const maxTurnBytes = 32 << 10
 // aiStatus is the body of GET /api/ai.
 type aiStatus struct {
 	Available bool   `json:"available" desc:"Whether a hosted model is configured."`
-	ID        string `json:"id"        desc:"The provider id, or "none"."`
+	ID        string `json:"id"        desc:"The provider id, or none when unavailable."`
 	Label     string `json:"label"     desc:"The model's display name. Empty when unavailable."`
 }
 
