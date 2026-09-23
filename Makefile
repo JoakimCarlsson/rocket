@@ -11,13 +11,19 @@ include .env
 export
 endif
 
-.PHONY: run fmt lint up down migrate
+.PHONY: run fmt lint tools up down migrate
 
 GOPKGS := $(shell go list -f '{{.Dir}}' ./...)
 
 fmt:
 	$(GOBIN)/golines -m 80 --base-formatter=$(GOBIN)/goimports -w $(GOPKGS)
 	cd web && npm run fmt
+
+tools:
+	go install github.com/segmentio/golines@latest
+	go install golang.org/x/tools/cmd/goimports@latest
+	go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2
+	go install github.com/air-verse/air@latest
 
 lint:
 	go vet ./...
@@ -45,7 +51,7 @@ else
 run: up migrate
 	-@lsof -ti tcp:3000 | xargs -r kill -9 2>/dev/null || true
 	-@lsof -ti tcp:8080 | xargs -r kill -9 2>/dev/null || true
-	@trap 'kill 0' INT TERM EXIT; \
+	@trap 'trap - INT TERM EXIT; kill 0' INT TERM EXIT; \
 	$(AIR) & \
 	(cd web && npm install && npm run dev) & \
 	wait
