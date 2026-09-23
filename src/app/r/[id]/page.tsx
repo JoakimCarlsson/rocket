@@ -15,7 +15,7 @@ function resolve(id: string): SharePayload | null {
 export async function generateMetadata({ params }: PageProps<"/r/[id]">): Promise<Metadata> {
   const { id } = await params;
   const payload = resolve(id);
-  return { title: payload ? `${payload.rocket.name} — ROCKET.AI` : "Rocket not found — ROCKET.AI" };
+  return { title: payload ? `${payload.rocket.name} — ROCKET.JDADDY` : "Rocket not found — ROCKET.JDADDY" };
 }
 
 /** A shared rocket, or its share card when `?card=1`. */

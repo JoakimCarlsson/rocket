@@ -23,7 +23,7 @@ export function ShareDialog({ rocket, prompt, attempt, onClose }: { rocket: Rock
   };
   const nativeShare = async () => {
     try {
-      await navigator.share({ title: rocket.name, text: `I built ${rocket.name} on ROCKET.AI`, url });
+      await navigator.share({ title: rocket.name, text: `I built ${rocket.name} on ROCKET.JDADDY`, url });
     } catch {
       /* dismissed */
     }

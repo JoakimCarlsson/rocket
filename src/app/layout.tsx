@@ -7,7 +7,7 @@ const display = Unbounded({ variable: "--font-display", subsets: ["latin"], weig
 const mono = JetBrains_Mono({ variable: "--font-mono", subsets: ["latin"], weight: ["400", "500"] });
 
 export const metadata: Metadata = {
-  title: "ROCKET.AI — Talk a rocket into existence",
+  title: "ROCKET.JDADDY — Talk a rocket into existence",
   description: "Design ridiculous fictional rockets by chatting with an AI engineer, then launch them and watch what happens.",
 };
 

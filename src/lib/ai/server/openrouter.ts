@@ -80,7 +80,7 @@ export class OpenRouterModelClient implements ModelClient {
       headers: {
         Authorization: `Bearer ${this.apiKey}`,
         "Content-Type": "application/json",
-        "X-OpenRouter-Title": "ROCKET.AI",
+        "X-OpenRouter-Title": "ROCKET.JDADDY",
       },
       body: JSON.stringify({
         model: this.model,

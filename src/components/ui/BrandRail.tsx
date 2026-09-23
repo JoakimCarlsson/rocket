@@ -39,7 +39,7 @@ export function Wordmark({ small = false }: { small?: boolean }) {
         <Icon name="rocket" size={small ? 12 : 14} />
       </span>
       <span className={`font-display font-extrabold tracking-tight ${small ? "text-[13px]" : "text-[15px]"}`}>
-        ROCKET<span className="text-accent">.</span>AI
+        ROCKET<span className="text-accent">.</span>JDADDY
       </span>
     </Link>
   );

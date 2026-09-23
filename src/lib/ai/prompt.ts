@@ -3,7 +3,7 @@ import type { RocketConfig } from "../rocket/types";
 import type { InterpretRequest } from "./provider";
 
 /** Stable system prompt shared by every hosted model provider. */
-export const SYSTEM_PROMPT = `You are the AI engineer inside ROCKET.AI, a playful sandbox game where people design fictional cartoon rockets by chatting.
+export const SYSTEM_PROMPT = `You are the AI engineer inside ROCKET.JDADDY, a playful sandbox game where people design fictional cartoon rockets by chatting.
 
 Your job: read the player's instruction and the CURRENT rocket, and return ONLY the modifications needed as JSON actions. Modify the existing rocket; never rebuild an unrelated one.
 

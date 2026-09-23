@@ -1,4 +1,4 @@
-# ROCKET.AI
+# ROCKET.JDADDY
 
 Design ridiculous fictional rockets by talking to an AI engineer, then launch them and watch what happens. This is a game: every number is a made-up simulation value.
 

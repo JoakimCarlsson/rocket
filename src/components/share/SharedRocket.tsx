@@ -130,7 +130,7 @@ function ShareCard({ payload, stats, headline }: { payload: SharePayload; stats:
     const mono = getComputedStyle(document.body).getPropertyValue("--font-mono") || "monospace";
     g.fillStyle = "#ff5b1f";
     g.font = `800 20px ${display}`;
-    g.fillText("ROCKET.AI", 648, 70);
+    g.fillText("ROCKET.JDADDY", 648, 70);
     g.fillStyle = "#858a94";
     g.font = `500 13px ${mono}`;
     g.fillText(`${payload.creator.toUpperCase()} · FICTIONAL VEHICLE`, 648, 100);
@@ -164,7 +164,7 @@ function ShareCard({ payload, stats, headline }: { payload: SharePayload; stats:
             <ShowcaseViewport rocket={payload.rocket} capture className="!absolute inset-0" />
           </div>
           <div className="flex flex-1 flex-col p-12">
-            <div className="font-display text-[20px] font-extrabold text-accent">ROCKET.AI</div>
+            <div className="font-display text-[20px] font-extrabold text-accent">ROCKET.JDADDY</div>
             <div className="label-xs mt-2">{payload.creator} · fictional vehicle</div>
             <h1 className="mt-8 font-display text-[50px] leading-[1.05] font-extrabold tracking-tight">{payload.rocket.name}</h1>
             <div className="mt-6 font-display text-[20px] font-bold text-accent-soft">{headline}</div>
