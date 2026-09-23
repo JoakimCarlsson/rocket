@@ -124,7 +124,7 @@ export function SharedRocket({
           ))}
         </div>
         <p className="label-xs text-faint">
-          All numbers are fictional game values.
+          Simplified flight physics. Game values, not engineering.
         </p>
 
         <div className="mt-auto grid gap-2">

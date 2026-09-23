@@ -1,4 +1,12 @@
-import { interstageHeight, payloadHeight, topHeight } from "./stats";
+import {
+  decorAnchor,
+  finGeometry,
+  interstageHeight,
+  payloadHeight,
+  payloadTopRadius,
+  topHeight,
+} from "./geometry";
+import { FAIRING_OWNER, PROPELLANTS, UPPER_OWNER } from "./physics";
 import type { DecorPart, EngineSpec, RocketConfig, Stage } from "./types";
 
 /** Every primitive the renderer knows how to draw. */
@@ -81,7 +89,10 @@ export function boosterSegment(id: string): string {
 }
 
 /** Segment containing the payload, top and anything attached to them. */
-export const UPPER_SEGMENT = "upper";
+export const UPPER_SEGMENT = UPPER_OWNER;
+
+/** Segment holding a payload fairing and its nose, jettisoned above the atmosphere. */
+export const FAIRING_SEGMENT = FAIRING_OWNER;
 
 /** Returns the height of an engine bell for a given engine size. */
 export function bellHeight(engine: EngineSpec): number {
@@ -223,7 +234,7 @@ export function layoutRocket(config: RocketConfig): RocketLayout {
     labels.push({
       key: `${stage.id}:label`,
       title: `STAGE ${index + 1}`,
-      detail: `${stage.height.toFixed(1)}M · ${stage.engine.count}× ${stage.engine.style.toUpperCase()}`,
+      detail: `${stage.height.toFixed(1)}M · ${stage.engine.count}× ${stage.engine.style.toUpperCase()} · ${PROPELLANTS[stage.propellant].label}`,
       position: [rBottom + 0.4, y + stage.height * 0.55, 0],
       side: index % 2 === 0 ? "right" : "left",
     });
@@ -257,32 +268,64 @@ export function layoutRocket(config: RocketConfig): RocketLayout {
   const pHeight = payloadHeight(config);
   const payload = config.payload;
   let payloadTopR = upperR;
+  const shellSegment =
+    payload.kind === "fairing" ? FAIRING_SEGMENT : UPPER_SEGMENT;
   if (payload.kind !== "none") {
     const r2 = upperR;
-    const r =
-      payload.kind === "capsule"
-        ? upperR * 0.58
-        : payload.kind === "fairing"
-          ? upperR * 1.12
-          : payload.kind === "satellite"
-            ? upperR * 0.75
-            : upperR;
+    const r = payloadTopRadius(config);
     payloadTopR = r;
     push({
       key: `${payload.id}:payload`,
       sourceId: payload.id,
       kind: "payload",
-      segment: UPPER_SEGMENT,
+      segment: shellSegment,
       variant: payload.kind,
       position: [0, y, 0],
       dims: { h: pHeight, r, r2, s: payload.crew },
       color: payload.color ?? appearance.primary,
       color2: appearance.secondary,
     });
+    if (payload.kind === "fairing")
+      push({
+        key: `${payload.id}:cargo`,
+        sourceId: payload.id,
+        kind: "payload",
+        segment: UPPER_SEGMENT,
+        variant: "cargo",
+        position: [0, y + 0.2, 0],
+        dims: { h: pHeight * 0.75, r: upperR * 0.7, r2: upperR * 0.7, s: 0 },
+        color: appearance.accent,
+        color2: appearance.secondary,
+      });
+    if (payload.heatShield)
+      push({
+        key: `${payload.id}:shield`,
+        sourceId: payload.id,
+        kind: "trim",
+        segment: UPPER_SEGMENT,
+        position: [0, y, 0],
+        dims: { h: 0.5, r: r2 * 1.03, r2: r2 * 1.03, s: 1 },
+        color: "#4a2e1f",
+      });
+    if (payload.parachutes)
+      push({
+        key: `${payload.id}:chutes`,
+        sourceId: payload.id,
+        kind: "trim",
+        segment: shellSegment,
+        position: [0, y + pHeight - 0.7, 0],
+        dims: { h: 0.6, r: r * 1.05, r2: r * 1.05, s: 1 },
+        color: "#ff8a2a",
+      });
+    const extras = [
+      payload.crew ? `CREW ${payload.crew}` : "",
+      payload.heatShield ? "SHIELD" : "",
+      payload.parachutes ? "CHUTES" : "",
+    ].filter(Boolean);
     labels.push({
       key: `${payload.id}:label`,
       title: "PAYLOAD",
-      detail: `${payload.kind.toUpperCase()}${payload.crew ? ` · CREW ${payload.crew}` : ""}`,
+      detail: [payload.kind.toUpperCase(), ...extras].join(" · "),
       position: [Math.max(r, r2) + 0.4, y + pHeight * 0.5, 0],
       side: "left",
     });
@@ -295,7 +338,7 @@ export function layoutRocket(config: RocketConfig): RocketLayout {
       key: `${payload.id}:top`,
       sourceId: payload.id,
       kind: "top",
-      segment: UPPER_SEGMENT,
+      segment: shellSegment,
       variant: payload.top,
       position: [0, y, 0],
       dims: { h: tHeight, r: payloadTopR, r2: payloadTopR, s: 1 },
@@ -319,11 +362,7 @@ export function layoutRocket(config: RocketConfig): RocketLayout {
     const offset = config.boosters.length
       ? Math.PI / Math.max(2, fins.count)
       : 0;
-    const span = fins.size * bottom.rBottom * 0.9;
-    const finHeight = Math.min(
-      bottom.stage.height * 0.5,
-      fins.size * bottom.rBottom * 2.2,
-    );
+    const { span, rootChord: finHeight } = finGeometry(config);
     for (let i = 0; i < fins.count; i++) {
       const a = offset + (i / fins.count) * Math.PI * 2;
       push({
@@ -373,16 +412,10 @@ export function layoutRocket(config: RocketConfig): RocketLayout {
     }
   }
 
-  const anchors = {
-    top: height,
-    payload: coreTopY + pHeight * 0.5,
-    core: coreTopY * 0.55,
-    bottom: Math.min(coreTopY * 0.18, 6),
-  };
   config.decorativeParts.forEach((decor) => {
     layoutDecor(
       decor,
-      anchors[decor.attach],
+      decorAnchor(config, decor.attach),
       decor.attach,
       radiusAt,
       segmentAt,

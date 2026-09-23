@@ -15,11 +15,14 @@ const color = z.string().transform((value, ctx) => {
 
 const id = z.string().regex(/^[a-z]{3}-[a-z0-9]{3,12}$/);
 
+const propellant = z.enum(["solid", "kerolox", "methalox", "hydrolox"]);
+
 const engine = z.object({
   count: z.number(),
   size: z.number(),
   power: z.number(),
   style: z.enum(["bell", "aerospike", "flared", "trumpet"]),
+  gimbal: z.boolean().default(true),
   color,
 });
 
@@ -38,6 +41,7 @@ export const rocketSchema = z.object({
         radius: z.number(),
         taper: z.number(),
         color: color.nullable(),
+        propellant: propellant.default("kerolox"),
         engine,
       }),
     )
@@ -51,6 +55,7 @@ export const rocketSchema = z.object({
         radius: z.number(),
         color: color.nullable(),
         top: z.enum(["cone", "ogive", "blunt"]),
+        propellant: propellant.default("solid"),
         engine,
       }),
     )
@@ -70,6 +75,8 @@ export const rocketSchema = z.object({
     color: color.nullable(),
     top: z.enum(["cone", "ogive", "needle", "blunt", "dome", "spike", "none"]),
     topColor: color.nullable(),
+    heatShield: z.boolean().default(false),
+    parachutes: z.boolean().default(false),
   }),
   fins: z
     .object({

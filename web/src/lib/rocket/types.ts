@@ -4,6 +4,9 @@ export type SizeClass = "tiny" | "small" | "medium" | "large" | "huge";
 /** Visual shape of an engine nozzle. */
 export type NozzleStyle = "bell" | "aerospike" | "flared" | "trumpet";
 
+/** What a stage or booster burns. Sets density, efficiency and whether it can throttle. */
+export type Propellant = "solid" | "kerolox" | "methalox" | "hydrolox";
+
 /** Shape of the very top of the rocket. */
 export type TopKind =
   | "cone"
@@ -56,6 +59,7 @@ export interface EngineSpec {
   size: number;
   power: number;
   style: NozzleStyle;
+  gimbal: boolean;
   color: string;
 }
 
@@ -66,6 +70,7 @@ export interface Stage {
   radius: number;
   taper: number;
   color: string | null;
+  propellant: Propellant;
   engine: EngineSpec;
 }
 
@@ -76,6 +81,7 @@ export interface Booster {
   radius: number;
   color: string | null;
   top: "cone" | "ogive" | "blunt";
+  propellant: Propellant;
   engine: EngineSpec;
 }
 
@@ -88,6 +94,8 @@ export interface Payload {
   color: string | null;
   top: TopKind;
   topColor: string | null;
+  heatShield: boolean;
+  parachutes: boolean;
 }
 
 /** A set of fins around the bottom stage. */
@@ -145,13 +153,16 @@ export interface RocketConfig {
   appearance: Appearance;
 }
 
-/** Game-only statistics derived from a configuration. */
+/** Statistics derived from a configuration by the physics model. */
 export interface SimulatedStats {
   height: number;
   mass: number;
   thrust: number;
+  twr: number;
+  deltaV: number;
+  deltaVNeeded: number;
+  stability: number;
   crew: number;
-  range: number;
   cost: number;
   reliability: number;
   chaos: number;

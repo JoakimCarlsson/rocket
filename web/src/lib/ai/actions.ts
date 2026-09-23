@@ -28,6 +28,8 @@ const factor = z.number().min(0.1).max(6);
 const count = z.number().int().min(0).max(50);
 const componentId = z.string().max(24);
 
+const propellant = z.enum(["solid", "kerolox", "methalox", "hydrolox"]);
+
 const decorKind = z.enum([
   "antenna",
   "ring",
@@ -104,7 +106,14 @@ export const actionSchema = z.discriminatedUnion("type", [
     size: size.optional(),
     power: z.number().min(1).max(10).optional(),
     style: z.enum(["bell", "aerospike", "flared", "trumpet"]).optional(),
+    gimbal: z.boolean().optional(),
     color: color.optional(),
+  }),
+  z.object({
+    type: z.literal("set_propellant"),
+    target: z.enum(["core", "upper", "stages", "boosters", "all", "id"]),
+    id: componentId.optional(),
+    value: propellant,
   }),
   z.object({
     type: z.literal("set_color"),
@@ -147,6 +156,8 @@ export const actionSchema = z.discriminatedUnion("type", [
       .optional(),
     crew: z.number().int().min(0).max(12).optional(),
     size: size.optional(),
+    heatShield: z.boolean().optional(),
+    parachutes: z.boolean().optional(),
   }),
   z.object({
     type: z.literal("set_fins"),

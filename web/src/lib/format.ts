@@ -7,7 +7,7 @@ export function compactNumber(value: number): string {
   return Math.round(value).toLocaleString("en-US");
 }
 
-/** Display metadata for each fictional stat. */
+/** Display metadata for each stat. */
 export const STAT_META = [
   {
     key: "height",
@@ -18,13 +18,18 @@ export const STAT_META = [
   { key: "mass", label: "MASS", unit: "t", format: compactNumber },
   { key: "thrust", label: "THRUST", unit: "kN", format: compactNumber },
   {
-    key: "crew",
-    label: "CREW",
+    key: "twr",
+    label: "LIFTOFF TWR",
     unit: "",
-    format: (v: number) => String(Math.round(v)),
+    format: (v: number) => v.toFixed(2),
   },
-  { key: "range", label: "RANGE", unit: "km", format: compactNumber },
-  { key: "cost", label: "COST", unit: "$M", format: compactNumber },
+  { key: "deltaV", label: "ΔV", unit: "m/s", format: compactNumber },
+  {
+    key: "stability",
+    label: "STABILITY",
+    unit: "cal",
+    format: (v: number) => `${v > 0 ? "+" : ""}${v.toFixed(1)}`,
+  },
   {
     key: "reliability",
     label: "RELIABILITY",

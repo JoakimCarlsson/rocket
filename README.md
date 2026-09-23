@@ -1,6 +1,6 @@
 # ROCKET.JDADDY
 
-Design ridiculous fictional rockets by talking to an AI engineer, then launch them and watch what happens. This is a game: every number is a made-up simulation value.
+Design ridiculous fictional rockets by talking to an AI engineer, then launch them and watch what happens. Flights run on a simplified textbook physics model (rocket equation, drag, gravity, staging, stability); it is a game, not an engineering tool.
 
 ## Layout
 
@@ -41,11 +41,14 @@ The Deploy workflow runs on the self-hosted GitHub Actions runner, reads the rep
 | Rocket config types, defaults, limits, schema validation | `web/src/lib/rocket/{types,defaults,limits,schema}.ts` |
 | Applying actions to a config (pure) | `web/src/lib/rocket/apply.ts` |
 | Procedural generation: config → positioned parts, nozzles, labels | `web/src/lib/rocket/layout.ts` |
-| Fictional stats and joke meters | `web/src/lib/rocket/stats.ts` |
+| Shape helpers: stack heights, radii, fin planform, decor anchors | `web/src/lib/rocket/geometry.ts` |
+| Physics model: propellants, nozzles, engine thrust/Isp, masses, drag, centre of pressure, Δv breakdown, failure risks | `web/src/lib/rocket/physics.ts` |
+| Stats (TWR, Δv, stability, reliability) and joke meters | `web/src/lib/rocket/stats.ts` |
 | AI action schema and output validation | `web/src/lib/ai/actions.ts` |
 | Provider interface, local engineer, remote provider, auto-fallback | `web/src/lib/ai/{provider,local-provider,local-interpreter,remote-provider,client}.ts` |
 | Hosted engineer (OpenRouter via `joakimcarlsson/ai`, structured outputs) and endpoint | `internal/engineer`, `internal/httpx/ai_endpoint.go` |
-| Launch simulation (outcome + event timeline, seeded) | `web/src/lib/sim/simulate.ts` |
+| Flight integrator: 2D ascent around a rotating Earth with guidance, throttling, staging, control loss, max-Q breakup and seeded hardware failures | `web/src/lib/sim/flight.ts` |
+| Launch plan: outcome, compressed animation timeline, report, staging summary | `web/src/lib/sim/simulate.ts` |
 | 3D rendering (R3F): parts, animated rocket, bay, launch scene, particles, thumbnails | `web/src/components/three/*` |
 | UI | `web/src/components/ui/*`, `web/src/components/Builder.tsx`, `web/src/components/explore/*`, `web/src/components/share/*` |
 | State (undo/redo, history, launch flow) | `web/src/lib/store.ts` |

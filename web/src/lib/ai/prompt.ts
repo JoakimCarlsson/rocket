@@ -1,4 +1,4 @@
-import { computeStats } from "../rocket/stats";
+import { computeStats, stagingBreakdown } from "../rocket/stats";
 import type { RocketConfig } from "../rocket/types";
 import type { InterpretRequest } from "./provider";
 
@@ -13,11 +13,13 @@ export function describeRocket(rocket: RocketConfig): string {
       id: s.id,
       height: +s.height.toFixed(1),
       radius: +s.radius.toFixed(2),
+      propellant: s.propellant,
       engines: {
         count: s.engine.count,
         size: +s.engine.size.toFixed(2),
         power: +s.engine.power.toFixed(1),
         style: s.engine.style,
+        gimbal: s.engine.gimbal,
       },
       color: s.color,
     })),
@@ -25,6 +27,8 @@ export function describeRocket(rocket: RocketConfig): string {
       id: b.id,
       height: +b.height.toFixed(1),
       radius: +b.radius.toFixed(2),
+      propellant: b.propellant,
+      gimbal: b.engine.gimbal,
       color: b.color,
     })),
     payload: rocket.payload,
@@ -33,6 +37,11 @@ export function describeRocket(rocket: RocketConfig): string {
     decorativeParts: rocket.decorativeParts,
     appearance: rocket.appearance,
     fictionalStats: stats,
+    staging: stagingBreakdown(rocket).map((p) => ({
+      burn: p.label,
+      deltaV: Math.round(p.deltaV),
+      twr: +p.twr.toFixed(2),
+    })),
   });
 }
 

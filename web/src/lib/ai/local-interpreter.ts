@@ -180,6 +180,8 @@ export function interpretLocally(
   stages(ctx);
   proportions(ctx);
   engines(ctx);
+  propulsion(ctx);
+  recovery(ctx);
   paint(ctx);
   tops(ctx);
   payloads(ctx);
@@ -419,6 +421,11 @@ function boosters(ctx: Context): void {
 function stages(ctx: Context): void {
   const { text, rocket } = ctx;
   if (!has(text, /\bstages?\b|\bsingle stage\b|\bsstos?\b/)) return;
+  if (
+    has(text, PROPELLANT_WORDS) &&
+    !has(text, /\b(add|more|another|extra|remove|fewer)\b/)
+  )
+    return;
   if (has(text, /\bsingle stage\b|\bssto\b|\bone stage\b/)) {
     const removals: RocketAction[] = rocket.stages
       .slice(1)
@@ -628,6 +635,80 @@ function engines(ctx: Context): void {
             "More thrust. The ground is nervous.",
           ]);
   emit(ctx, fragment, action);
+}
+
+const PROPELLANT_WORDS =
+  /\b(hydrolox|hydrogen|lh2|methalox|methane|kerolox|kerosene|rp-?1|solid fuel|solid propellant)\b/;
+
+/** Handles propellant swaps and engine gimbals. */
+function propulsion(ctx: Context): void {
+  const { text } = ctx;
+  const value = has(text, /\b(hydrolox|hydrogen|lh2)\b/)
+    ? "hydrolox"
+    : has(text, /\b(methalox|methane)\b/)
+      ? "methalox"
+      : has(text, /\b(kerolox|kerosene|rp-?1)\b/)
+        ? "kerolox"
+        : has(text, /\bsolid (fuel|rocket|motors?|boosters?|propellant)\b/)
+          ? "solid"
+          : undefined;
+  if (value) {
+    const target = has(text, /\bboosters?\b/)
+      ? "boosters"
+      : has(text, /\b(upper|second|top)\b/)
+        ? "upper"
+        : has(text, /\b(first|core|bottom|lower)\b/)
+          ? "core"
+          : "stages";
+    const lines = {
+      hydrolox: "Hydrolox it is. Very efficient, very large tanks.",
+      methalox: "Methalox loaded. Smells like a barbecue.",
+      kerolox: "Kerolox. Sooty, dense, dependable.",
+      solid: "Solid propellant. Once lit, there is no off switch.",
+    } as const;
+    emit(ctx, lines[value], { type: "set_propellant", target, value });
+  }
+  if (has(text, /\bgimbal(l?ed|l?ing|s)?\b|\bthrust vector(ing)?\b/)) {
+    const off = has(
+      text,
+      /\b(no|without|remove|fixed|lock)\b[a-z ]*\b(gimbal|vector)/,
+    );
+    emit(
+      ctx,
+      off
+        ? "Gimbals locked. Steering is now the fins' problem."
+        : "Engines gimballed. It can steer now.",
+      {
+        type: "set_engines",
+        target: has(text, /\bboosters?\b/) ? "boosters" : "all",
+        gimbal: !off,
+      },
+    );
+  }
+}
+
+/** Handles heat shields and parachutes for bringing the payload home. */
+function recovery(ctx: Context): void {
+  const { text } = ctx;
+  const remove = (noun: string) =>
+    has(text, new RegExp(`\\b(no|without|remove|lose|ditch)\\b[a-z ]*${noun}`));
+  if (has(text, /\bheat ?shields?\b/)) {
+    const off = remove("heat ?shields?");
+    emit(
+      ctx,
+      off
+        ? "Heat shield removed. Re-entry is now a one-way ticket."
+        : "Heat shield fitted.",
+      { type: "set_payload", heatShield: !off },
+    );
+  }
+  if (has(text, /\b(parachutes?|chutes?)\b/)) {
+    const off = remove("(parachutes?|chutes?)");
+    emit(ctx, off ? "Parachutes removed. Bold." : "Parachutes packed.", {
+      type: "set_payload",
+      parachutes: !off,
+    });
+  }
 }
 
 /** Finds a colour mentioned right before a noun, like "red boosters". */
@@ -1193,7 +1274,7 @@ function liftFix(
     const stats = computeStats(
       applyActions(rocket, [...planned, ...added]).config,
     );
-    if (stats.thrust >= stats.mass * 9.8 * 1.3) break;
+    if (stats.twr >= 1.3) break;
     added.push(step);
   }
   return added;
@@ -1240,6 +1321,44 @@ export function repairLocally(
     done.push(
       `confiscated the ${victim.kind === "googlyEyes" ? "googly eyes" : victim.kind}`,
     );
+  }
+  if (
+    mission?.outcome === "spin" ||
+    !rocket.stages.every((s) => s.engine.gimbal)
+  ) {
+    actions.push({ type: "set_engines", target: "all", gimbal: true });
+    done.push("gimballed every engine");
+  }
+  if (rocket.stages[0]?.engine.style === "flared") {
+    actions.push({ type: "set_engines", target: "core", style: "bell" });
+    done.push("swapped the sea-level-hating nozzles for bells");
+  }
+  if (
+    rocket.payload.crew > 0 &&
+    !(rocket.payload.heatShield && rocket.payload.parachutes)
+  ) {
+    actions.push({ type: "set_payload", heatShield: true, parachutes: true });
+    done.push("gave the crew a heat shield and parachutes");
+  }
+  const stats = computeStats(applyActions(rocket, actions).config);
+  if (stats.deltaV < stats.deltaVNeeded) {
+    if (
+      rocket.stages.length > 1 &&
+      rocket.stages[rocket.stages.length - 1].propellant !== "hydrolox"
+    ) {
+      actions.push({
+        type: "set_propellant",
+        target: "upper",
+        value: "hydrolox",
+      });
+      done.push("switched the upper stage to hydrolox");
+    } else if (rocket.stages.length < 3) {
+      actions.push({ type: "add_stage", position: "top" });
+      done.push("added a stage for the delta-v you were missing");
+    } else {
+      actions.push({ type: "scale", target: "stages", height: 1.2 });
+      done.push("stretched the tanks");
+    }
   }
   const lift = liftFix(rocket, actions);
   if (lift.length) {

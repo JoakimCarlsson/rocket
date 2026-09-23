@@ -1,4 +1,5 @@
 import { makeId } from "./ids";
+import { buildVehicle, burnPhases } from "./physics";
 import {
   chance,
   createRng,
@@ -17,6 +18,7 @@ import type {
   NozzleStyle,
   Pattern,
   PayloadKind,
+  Propellant,
   RocketConfig,
   Stage,
   TopKind,
@@ -32,6 +34,7 @@ export function createEngine(overrides: Partial<EngineSpec> = {}): EngineSpec {
     size: 1,
     power: 5,
     style: "bell",
+    gimbal: true,
     color: "#2a2d33",
     ...overrides,
   };
@@ -48,6 +51,7 @@ export function createStage(
     radius: 2.2,
     taper: 0,
     color: null,
+    propellant: "kerolox",
     engine: createEngine({ count: 1, size: 1 }),
     ...overrides,
   };
@@ -64,7 +68,8 @@ export function createBooster(
     radius: 1,
     color: null,
     top: "cone",
-    engine: createEngine({ count: 1, size: 0.8 }),
+    propellant: "solid",
+    engine: createEngine({ count: 1, size: 0.8, gimbal: false }),
     ...overrides,
   };
 }
@@ -109,6 +114,8 @@ export function createStarterRocket(): RocketConfig {
       color: null,
       top: "ogive",
       topColor: null,
+      heatShield: true,
+      parachutes: true,
     },
     fins: {
       id: makeId("fin", rng),
@@ -161,6 +168,12 @@ const PAYLOADS: PayloadKind[] = [
   "habitat",
 ];
 const NOZZLES: NozzleStyle[] = ["bell", "aerospike", "flared", "trumpet"];
+const PROPELLANT_CHOICES: Propellant[] = [
+  "kerolox",
+  "kerolox",
+  "methalox",
+  "hydrolox",
+];
 const FINS: FinShape[] = ["delta", "swept", "grid", "tiny", "shark"];
 const DECOR: DecorKind[] = [
   "antenna",
@@ -187,6 +200,7 @@ export function createRandomRocket(seed: number): RocketConfig {
           height: randRange(rng, 10, 32) * (i === 0 ? 1.2 : 0.8),
           radius: baseRadius * (1 - i * randRange(rng, 0, 0.18)),
           taper: chance(rng, 0.3) ? randRange(rng, 0.05, 0.25) : 0,
+          propellant: pick(rng, PROPELLANT_CHOICES),
           engine: createEngine({
             count: i === 0 ? pick(rng, [1, 3, 5, 7, 9]) : 1,
             size: randRange(rng, 0.7, 1.4),
@@ -213,17 +227,23 @@ export function createRandomRocket(seed: number): RocketConfig {
   const decorCount = randInt(rng, 0, 3);
   const decorativeParts: DecorPart[] = Array.from(
     { length: decorCount },
-    () => ({
-      id: makeId("dec", rng),
-      kind: pick(rng, DECOR),
-      attach: pick(rng, ["top", "payload", "core", "bottom"] as const),
-      count: randInt(rng, 1, 4),
-      size: randRange(rng, 0.7, 1.4),
-      color: null,
-    }),
+    () => {
+      const kind = pick(rng, DECOR);
+      return {
+        id: makeId("dec", rng),
+        kind,
+        attach:
+          kind === "wings"
+            ? ("bottom" as const)
+            : pick(rng, ["top", "payload", "core", "bottom"] as const),
+        count: randInt(rng, 1, 4),
+        size: randRange(rng, 0.7, 1.4),
+        color: null,
+      };
+    },
   );
   const payloadKind = pick(rng, PAYLOADS);
-  return {
+  const rocket: RocketConfig = {
     version: 1,
     name: DEFAULT_NAME,
     seed,
@@ -242,6 +262,8 @@ export function createRandomRocket(seed: number): RocketConfig {
       color: null,
       top: pick(rng, TOPS),
       topColor: null,
+      heatShield: payloadKind === "capsule" && chance(rng, 0.8),
+      parachutes: payloadKind === "capsule" && chance(rng, 0.8),
     },
     fins: chance(rng, 0.7)
       ? {
@@ -265,4 +287,53 @@ export function createRandomRocket(seed: number): RocketConfig {
       glow: pick(rng, ["#ffb070", "#7cc8ff", "#b28cff", "#8dffb0"]),
     },
   };
+  tuneThrust(rocket, rng);
+  return rocket;
+}
+
+/**
+ * Sets each stage's engine power so its ignition thrust-to-weight lands in a flyable
+ * band: 1.25 to 2.2 at liftoff and 0.7 to 1.4 for upper stages.
+ */
+function tuneThrust(rocket: RocketConfig, rng: Rng): void {
+  const vehicle = buildVehicle(rocket);
+  rocket.boosters.forEach((booster, index) => {
+    const group = vehicle.boosters[index];
+    const weight =
+      (group.propellantMass +
+        vehicle.items
+          .filter((i) => i.owner === group.key)
+          .reduce((sum, i) => sum + i.mass, 0)) *
+      9.81;
+    const perEngine =
+      (weight * randRange(rng, 1.3, 1.9)) / booster.engine.count;
+    booster.engine.size = Math.min(
+      3.5,
+      Math.max(
+        0.3,
+        booster.engine.size *
+          Math.sqrt(
+            perEngine /
+              (group.perf.thrustVac * (group.perf.ispSea / group.perf.ispVac)),
+          ),
+      ),
+    );
+  });
+  rocket.stages.forEach((stage, index) => {
+    const target =
+      index === 0 ? randRange(rng, 1.25, 2.2) : randRange(rng, 0.7, 1.4);
+    for (let pass = 0; pass < 3; pass++) {
+      const phase = burnPhases(buildVehicle(rocket)).find((p) =>
+        p.label.startsWith(`S${index + 1}`),
+      );
+      if (!phase || phase.twr <= 0) return;
+      const power = stage.engine.power * (target / phase.twr);
+      stage.engine.power = Math.min(10, Math.max(1, power));
+      if (power > 10)
+        stage.engine.size = Math.min(
+          3.5,
+          stage.engine.size * Math.sqrt(power / 10),
+        );
+    }
+  });
 }

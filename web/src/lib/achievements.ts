@@ -76,7 +76,8 @@ export function launchAchievements(plan: LaunchPlan): string[] {
     (plan.report.grade === "success" && plan.stats.reliability < 40)
   )
     earned.push("against_all_odds");
-  if (plan.events.some((e) => e.type === "explode")) earned.push("kaboom");
+  if (plan.events.some((e) => e.type === "explode" || e.type === "impact"))
+    earned.push("kaboom");
   if (plan.report.grade === "success") earned.push("orbit");
   return earned;
 }

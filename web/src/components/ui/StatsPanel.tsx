@@ -2,39 +2,57 @@
 
 import { motion } from "motion/react";
 import { useMemo, useState } from "react";
-import { STAT_META } from "@/lib/format";
-import { computeStats, jokeMeters } from "@/lib/rocket/stats";
+import { compactNumber, STAT_META } from "@/lib/format";
+import type { BurnPhase } from "@/lib/rocket/physics";
+import { computeStats, jokeMeters, stagingBreakdown } from "@/lib/rocket/stats";
 import type { RocketConfig, SimulatedStats } from "@/lib/rocket/types";
 import { AnimatedNumber } from "./AnimatedNumber";
 
 /** Normalises a stat to 0..1 for its bar; heavy-tailed stats use a log scale. */
-function fill(key: keyof SimulatedStats, value: number): number {
+function fill(key: keyof SimulatedStats, stats: SimulatedStats): number {
+  const value = stats[key];
   switch (key) {
     case "reliability":
     case "chaos":
       return value / 100;
     case "height":
       return Math.min(1, value / 220);
-    case "crew":
-      return Math.min(1, value / 12);
+    case "twr":
+      return Math.min(1, value / 3);
+    case "deltaV":
+      return Math.min(1, value / (stats.deltaVNeeded * 1.25));
+    case "stability":
+      return Math.min(1, Math.max(0, (value + 4) / 8));
     default:
       return Math.min(1, Math.log10(Math.max(1, value)) / 7);
   }
 }
 
-/** Bar colour for a stat. */
-function barColor(key: keyof SimulatedStats, value: number): string {
-  if (key === "reliability")
-    return value > 70
-      ? "var(--good)"
-      : value > 40
-        ? "var(--warn)"
-        : "var(--bad)";
-  if (key === "chaos") return value > 70 ? "var(--bad)" : "var(--accent)";
-  return "rgba(236,235,231,0.55)";
+/** Bar colour for a stat: green when it helps the mission, amber when marginal, red when it will not work. */
+function barColor(key: keyof SimulatedStats, stats: SimulatedStats): string {
+  const value = stats[key];
+  const tone = (good: boolean, warn: boolean) =>
+    good ? "var(--good)" : warn ? "var(--warn)" : "var(--bad)";
+  switch (key) {
+    case "reliability":
+      return tone(value > 90, value > 70);
+    case "chaos":
+      return value > 70 ? "var(--bad)" : "var(--accent)";
+    case "twr":
+      return tone(value >= 1.2 && value <= 3, value >= 1);
+    case "deltaV":
+      return tone(
+        value >= stats.deltaVNeeded,
+        value >= stats.deltaVNeeded * 0.85,
+      );
+    case "stability":
+      return tone(value >= 0, value >= -4);
+    default:
+      return "rgba(236,235,231,0.55)";
+  }
 }
 
-/** Right-hand panel of fictional stats with joke readouts. */
+/** Right-hand panel of physics stats, the staging breakdown and joke readouts. */
 export function StatsPanel({
   rocket,
   provider,
@@ -43,12 +61,15 @@ export function StatsPanel({
   provider: string;
 }) {
   const stats = useMemo(() => computeStats(rocket), [rocket]);
+  const phases = useMemo(() => stagingBreakdown(rocket), [rocket]);
   const jokes = useMemo(() => jokeMeters(stats), [stats]);
   return (
-    <aside className="panel pointer-events-auto w-[248px] rounded-2xl p-4">
+    <aside className="panel pointer-events-auto max-h-[calc(100vh-3rem)] w-[248px] overflow-y-auto rounded-2xl p-4">
       <div className="mb-3 flex items-center justify-between">
         <span className="label-xs">Simulated stats</span>
-        <span className="label-xs text-faint">fictional</span>
+        <span className="label-xs text-faint">
+          {rocket.destination.toUpperCase()}
+        </span>
       </div>
       <ul className="space-y-2.5">
         {STAT_META.map((meta) => {
@@ -61,6 +82,12 @@ export function StatsPanel({
                 </span>
                 <span className="text-[13px] text-text">
                   <AnimatedNumber value={value} format={meta.format} />
+                  {meta.key === "deltaV" && (
+                    <span className="text-[10px] text-faint">
+                      {" "}
+                      / {compactNumber(stats.deltaVNeeded)}
+                    </span>
+                  )}
                   <span className="ml-1 text-[10px] text-faint">
                     {meta.unit}
                   </span>
@@ -70,8 +97,8 @@ export function StatsPanel({
                 <motion.div
                   className="h-full rounded-full"
                   animate={{
-                    width: `${Math.max(2, fill(meta.key, value) * 100)}%`,
-                    backgroundColor: barColor(meta.key, value),
+                    width: `${Math.max(2, fill(meta.key, stats) * 100)}%`,
+                    backgroundColor: barColor(meta.key, stats),
                   }}
                   transition={{ type: "spring", stiffness: 120, damping: 20 }}
                 />
@@ -80,6 +107,7 @@ export function StatsPanel({
           );
         })}
       </ul>
+      <StagingTable phases={phases} />
       <div className="mt-4 space-y-1.5 border-t border-line pt-3">
         {jokes.map((joke) => (
           <div
@@ -106,6 +134,40 @@ export function StatsPanel({
   );
 }
 
+/** Per-burn delta-v and ignition thrust-to-weight from the rocket equation. */
+function StagingTable({ phases }: { phases: BurnPhase[] }) {
+  if (!phases.length) return null;
+  return (
+    <div className="mt-4 border-t border-line pt-3">
+      <div className="label-xs mb-1.5 flex justify-between">
+        <span>Staging</span>
+        <span className="text-faint">Δv · TWR</span>
+      </div>
+      <ul className="space-y-1 font-mono text-[10px]">
+        {phases.map((phase, i) => (
+          <li
+            key={`${phase.label}:${i}`}
+            className="grid grid-cols-[1fr_auto_auto] items-baseline gap-2"
+          >
+            <span className="truncate text-muted" title={phase.propellant}>
+              {phase.label}
+              <span className="ml-1 text-faint">{phase.propellant}</span>
+            </span>
+            <span className="text-text">{compactNumber(phase.deltaV)}</span>
+            <span
+              className={
+                phase.twr < (i === 0 ? 1 : 0.5) ? "text-bad" : "text-muted"
+              }
+            >
+              {phase.twr.toFixed(2)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 /** Compact stat strip for phones. */
 export function CompactStats({ rocket }: { rocket: RocketConfig }) {
   const stats = useMemo(() => computeStats(rocket), [rocket]);
@@ -113,7 +175,7 @@ export function CompactStats({ rocket }: { rocket: RocketConfig }) {
   const shown = open
     ? STAT_META
     : STAT_META.filter((m) =>
-        ["height", "thrust", "reliability", "chaos"].includes(m.key),
+        ["twr", "deltaV", "stability", "reliability"].includes(m.key),
       );
   return (
     <button

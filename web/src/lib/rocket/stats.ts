@@ -1,75 +1,21 @@
-import type {
-  EngineSpec,
-  RocketConfig,
-  SimulatedStats,
-  Stage,
-  TopKind,
-} from "./types";
-
-const TOP_HEIGHT_FACTOR: Record<TopKind, number> = {
-  cone: 1.7,
-  ogive: 2.1,
-  needle: 3.6,
-  blunt: 0.7,
-  dome: 1,
-  spike: 3,
-  none: 0,
-};
+import { totalHeight, totalWidth } from "./geometry";
+import {
+  allOwners,
+  attachedMass,
+  type BurnPhase,
+  buildVehicle,
+  burnPhases,
+  DELTA_V_NEEDED,
+  failureRisks,
+  fullTanks,
+  G0,
+  hardwareReliability,
+  staticMargin,
+  thrustAt,
+} from "./physics";
+import type { RocketConfig, SimulatedStats } from "./types";
 
 const SILLY_DECOR = new Set(["googlyEyes", "duck", "propeller", "spikes"]);
-
-/** Returns the height of the top cap for a given core radius. */
-export function topHeight(top: TopKind, radius: number): number {
-  return TOP_HEIGHT_FACTOR[top] * radius;
-}
-
-/** Returns the radius of the uppermost stage, which the payload sits on. */
-export function upperRadius(config: RocketConfig): number {
-  const top = config.stages[config.stages.length - 1];
-  return top ? top.radius * (1 - top.taper) : 2;
-}
-
-/** Returns the height of the adapter section joining two stacked stages. */
-export function interstageHeight(lower: Stage, upper: Stage): number {
-  return (
-    1.2 +
-    Math.abs(lower.radius * (1 - lower.taper) - upper.radius) * 0.9 +
-    upper.engine.size * 0.6
-  );
-}
-
-/** Returns the rendered height of the payload section. */
-export function payloadHeight(config: RocketConfig): number {
-  return config.payload.kind === "none" ? 0 : config.payload.height;
-}
-
-/** Returns the full stack height in game metres. */
-export function totalHeight(config: RocketConfig): number {
-  const stages = config.stages.reduce(
-    (sum, stage, index) =>
-      sum +
-      stage.height +
-      (index > 0 ? interstageHeight(config.stages[index - 1], stage) : 0),
-    0,
-  );
-  return (
-    stages +
-    payloadHeight(config) +
-    topHeight(config.payload.top, upperRadius(config))
-  );
-}
-
-/** Returns the widest horizontal extent of the vehicle, boosters included. */
-export function totalWidth(config: RocketConfig): number {
-  const core = Math.max(...config.stages.map((stage) => stage.radius), 1);
-  const booster = Math.max(0, ...config.boosters.map((b) => b.radius));
-  return (core + booster * 2) * 2;
-}
-
-/** Fictional thrust of one engine cluster. */
-function clusterThrust(engine: EngineSpec): number {
-  return engine.count * engine.size * engine.size * engine.power * 400;
-}
 
 /** Counts every engine on the vehicle. */
 export function engineCount(config: RocketConfig): number {
@@ -92,44 +38,34 @@ export function decorCount(config: RocketConfig): number {
   return config.decorativeParts.reduce((sum, part) => sum + part.count, 0);
 }
 
+/** Returns the rocket-equation breakdown of every burn, bottom stage first. */
+export function stagingBreakdown(config: RocketConfig): BurnPhase[] {
+  return burnPhases(buildVehicle(config));
+}
+
 /**
- * Derives deliberately silly game statistics from a configuration.
- * None of these numbers model real vehicles; they exist to react to prompts.
+ * Derives the vehicle's statistics from the physics model: mass, liftoff thrust,
+ * delta-v, static stability and hardware reliability. Chaos stays a joke meter.
  */
 export function computeStats(config: RocketConfig): SimulatedStats {
-  const height = totalHeight(config);
-  const coreMass = config.stages.reduce(
-    (sum, s) => sum + Math.PI * s.radius * s.radius * s.height ** 0.7 * 1.6,
-    0,
+  const vehicle = buildVehicle(config);
+  const attached = allOwners(vehicle);
+  const tanks = fullTanks(vehicle);
+  const mass = attachedMass(vehicle, attached, tanks);
+  const liftoffThrust = [vehicle.stages[0], ...vehicle.boosters]
+    .filter(Boolean)
+    .reduce((sum, g) => sum + thrustAt(g.perf, 1) * g.engines, 0);
+  const twr = liftoffThrust / (mass * G0);
+  const deltaV = burnPhases(vehicle).reduce((sum, p) => sum + p.deltaV, 0);
+  const reliability = Math.round(
+    Math.min(
+      99,
+      Math.max(1, hardwareReliability(failureRisks(config, vehicle))),
+    ),
   );
-  const boosterMass = config.boosters.reduce(
-    (sum, b) => sum + Math.PI * b.radius * b.radius * b.height ** 0.7 * 1.6,
-    0,
-  );
-  const extraMass =
-    config.payload.height * 12 +
-    decorCount(config) * 3 +
-    (config.legs ? 20 : 0);
-  const mass = coreMass + boosterMass + extraMass;
-
-  const liftoffThrust =
-    clusterThrust(
-      config.stages[0]?.engine ?? {
-        count: 0,
-        size: 0,
-        power: 0,
-        style: "bell",
-        color: "",
-      },
-    ) + config.boosters.reduce((sum, b) => sum + clusterThrust(b.engine), 0);
-  const twr = liftoffThrust / Math.max(1, mass * 9.8);
-
-  const stageCount = config.stages.length;
-  const range =
-    150 * Math.min(twr, 6) ** 1.6 * 6 ** stageCount * (config.tilt ? 0.6 : 1);
 
   const parts =
-    stageCount +
+    config.stages.length +
     config.boosters.length +
     (config.fins ? 1 : 0) +
     (config.legs ? 1 : 0) +
@@ -143,58 +79,39 @@ export function computeStats(config: RocketConfig): SimulatedStats {
   }[config.appearance.finish];
   const cost =
     (parts * 14 +
-      mass * 0.015 +
+      mass * 0.00002 +
       engineCount(config) * 6 +
       config.payload.crew * 9) *
-    finishCost;
+    finishCost *
+    (config.legs ? 0.8 : 1);
 
-  const boosters = config.boosters.length;
-  const engines = engineCount(config);
-  const power = peakPower(config);
   const decor = decorCount(config);
   const sillyDecor = config.decorativeParts.filter((p) =>
     SILLY_DECOR.has(p.kind),
   ).length;
-  const slenderness = height / Math.max(1, totalWidth(config));
-  const tiltPenalty = Math.abs(config.tilt) / 2.5;
-
-  let reliability = 96;
-  reliability -= Math.max(0, boosters - 4) * 4.2;
-  reliability -= Math.max(0, engines - 12) * 0.9;
-  reliability -= Math.max(0, power - 7) * 6;
-  reliability -= tiltPenalty;
-  reliability -= decor * 1.4;
-  reliability -= twr < 1 ? (1 - twr) * 70 : 0;
-  reliability -= twr > 5 ? (twr - 5) * 3 : 0;
-  reliability -= slenderness > 14 ? (slenderness - 14) * 2.5 : 0;
-  reliability -= Math.max(0, stageCount - 3) * 3;
-  reliability += config.fins ? 3 : -2;
-  reliability = Math.round(Math.min(99, Math.max(1, reliability)));
-
   let chaos = 4;
-  chaos += boosters * 2.6;
+  chaos += config.boosters.length * 2.6;
   chaos += decor * 3.5 + sillyDecor * 10;
-  chaos += Math.max(0, power - 5) * 5;
+  chaos += Math.max(0, peakPower(config) - 5) * 5;
   chaos += Math.abs(config.tilt) / 1.8;
   chaos += config.appearance.pattern === "checker" ? 6 : 0;
   chaos += (100 - reliability) * 0.35;
+  chaos += Math.max(0, totalHeight(config) / totalWidth(config) - 14) * 1.5;
   chaos = Math.round(Math.min(100, Math.max(0, chaos)));
 
   return {
-    height: Math.round(height * 10) / 10,
-    mass: Math.round(mass),
-    thrust: Math.round(liftoffThrust),
+    height: Math.round(vehicle.height * 10) / 10,
+    mass: Math.round(mass / 100) / 10,
+    thrust: Math.round(liftoffThrust / 1000),
+    twr: Math.round(twr * 100) / 100,
+    deltaV: Math.round(deltaV),
+    deltaVNeeded: DELTA_V_NEEDED[config.destination],
+    stability: Math.round(staticMargin(vehicle, attached, tanks) * 10) / 10,
     crew: config.payload.crew,
-    range: Math.round(range),
     cost: Math.round(cost),
     reliability,
     chaos,
   };
-}
-
-/** Returns the fictional thrust-to-weight figure the simulation relies on. */
-export function thrustToWeight(stats: SimulatedStats): number {
-  return stats.thrust / Math.max(1, stats.mass * 9.8);
 }
 
 /** Tongue-in-cheek readouts shown under the stats. These are jokes, not assessments. */

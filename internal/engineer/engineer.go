@@ -29,26 +29,29 @@ type interpretation struct {
 // action is one modification. Which fields mean anything depends on Type;
 // the rest are null.
 type action struct {
-	Type     string   `json:"type"`
-	Name     *string  `json:"name"`
-	Value    *string  `json:"value"`
-	Target   *string  `json:"target"`
-	ID       *string  `json:"id"`
-	IDs      []string `json:"ids,omitempty"`
-	Kind     *string  `json:"kind"`
-	Attach   *string  `json:"attach"`
-	Position *string  `json:"position"`
-	Size     *string  `json:"size"`
-	Style    *string  `json:"style"`
-	Shape    *string  `json:"shape"`
-	Color    *string  `json:"color"`
-	Count    *float64 `json:"count"`
-	Crew     *float64 `json:"crew"`
-	Power    *float64 `json:"power"`
-	Height   *float64 `json:"height"`
-	Width    *float64 `json:"width"`
-	Radius   *float64 `json:"radius"`
-	Degrees  *float64 `json:"degrees"`
+	Type       string   `json:"type"`
+	Name       *string  `json:"name"`
+	Value      *string  `json:"value"`
+	Target     *string  `json:"target"`
+	ID         *string  `json:"id"`
+	IDs        []string `json:"ids,omitempty"`
+	Kind       *string  `json:"kind"`
+	Attach     *string  `json:"attach"`
+	Position   *string  `json:"position"`
+	Size       *string  `json:"size"`
+	Style      *string  `json:"style"`
+	Shape      *string  `json:"shape"`
+	Color      *string  `json:"color"`
+	Count      *float64 `json:"count"`
+	Crew       *float64 `json:"crew"`
+	Power      *float64 `json:"power"`
+	Height     *float64 `json:"height"`
+	Width      *float64 `json:"width"`
+	Radius     *float64 `json:"radius"`
+	Degrees    *float64 `json:"degrees"`
+	Gimbal     *bool    `json:"gimbal"`
+	HeatShield *bool    `json:"heatShield"`
+	Parachutes *bool    `json:"parachutes"`
 }
 
 // interpretationSchema constrains the call, derived from the struct so the

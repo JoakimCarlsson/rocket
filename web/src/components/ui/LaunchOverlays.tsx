@@ -5,8 +5,13 @@ import { useEffect, useRef, useState } from "react";
 import type { LaunchCue, Telemetry } from "@/components/three/LaunchScene";
 import { achievementById } from "@/lib/achievements";
 import { NO_RESTORE } from "@/lib/dom";
-import type { LaunchPlan } from "@/lib/sim/simulate";
+import {
+  flightTime,
+  type LaunchPlan,
+  type StagingRow,
+} from "@/lib/sim/simulate";
 import { Icon } from "./Icon";
+import { TrajectoryPlot } from "./TrajectoryPlot";
 
 /** Full-screen wipe between the bay and the pad. Calls `onDone` once the screen is covered. */
 export function TransitionOverlay({
@@ -67,7 +72,30 @@ const CUE_BANNERS: Partial<
   explode: { text: "RAPID UNSCHEDULED DISASSEMBLY", tone: "bad" },
   tip_over: { text: "IT IS FALLING OVER", tone: "bad" },
   arrive: { text: "NOMINAL-ISH", tone: "ok" },
+  maxq: { text: "MAX-Q", tone: "ok" },
+  fairing_sep: { text: "FAIRING SEPARATION", tone: "ok" },
+  engine_out: { text: "ENGINE OUT", tone: "warn" },
+  burnout: { text: "ENGINE CUTOFF", tone: "warn" },
+  impact: { text: "LITHOBRAKING", tone: "bad" },
 };
+
+const ARRIVALS: Partial<Record<LaunchPlan["outcome"], string>> = {
+  lunar: "LUNAR TRAJECTORY CONFIRMED",
+  mars: "MARS TRANSFER CONFIRMED",
+  solar: "SUNWARD. SOMEHOW.",
+  hop: "APOGEE. COMING BACK DOWN.",
+  parked: "ORBIT, BUT NOT WHERE YOU WANTED",
+  escape: "ESCAPED EARTH",
+  suborbital: "SPACE, BRIEFLY",
+  payload_early: "PAYLOAD IS ON ITS OWN",
+};
+
+/** Formats a physical altitude for the HUD. */
+function formatHudAltitude(metres: number): string {
+  return metres < 10_000
+    ? `${Math.round(metres).toLocaleString("en-US")} M`
+    : `${(metres / 1000).toFixed(1)} KM`;
+}
 
 /** Heads-up display during launch: countdown, event banners and live telemetry. */
 export function LaunchHUD({
@@ -100,11 +128,7 @@ export function LaunchHUD({
   const banner = cue ? CUE_BANNERS[cue.value] : undefined;
   const arrived =
     cue?.value === "arrive"
-      ? plan.outcome === "lunar"
-        ? "LUNAR TRAJECTORY CONFIRMED"
-        : plan.outcome === "mars"
-          ? "MARS TRANSFER CONFIRMED"
-          : "ORBIT ACHIEVED"
+      ? (ARRIVALS[plan.outcome] ?? "ORBIT ACHIEVED")
       : null;
   const t = readout.t;
 
@@ -146,14 +170,12 @@ export function LaunchHUD({
       </AnimatePresence>
 
       <div className="absolute bottom-6 left-4 font-mono text-[11px] tracking-[0.14em] text-text/80 sm:left-8">
-        <div className="label-xs mb-1 text-accent">Telemetry · fictional</div>
+        <div className="label-xs mb-1 text-accent">Telemetry · simulated</div>
         <div>
           T{t < 0 ? "−" : "+"}
-          {Math.abs(t).toFixed(1)}s
+          {Math.abs(t < 0 ? t : flightTime(plan, t)).toFixed(0)}s
         </div>
-        <div>
-          ALT {Math.round(readout.altitude * 0.4).toLocaleString("en-US")} M
-        </div>
+        <div>ALT {formatHudAltitude(readout.altitude)}</div>
         <div>
           VEL {Math.round(readout.speed * 3.6).toLocaleString("en-US")} KM/H
         </div>
@@ -210,7 +232,7 @@ export function MissionReportCard({
         initial={{ opacity: 0, y: 30, scale: 0.96 }}
         animate={{ opacity: 1, y: 0, scale: 1 }}
         transition={{ type: "spring", stiffness: 140, damping: 18, delay: 0.1 }}
-        className="panel w-full max-w-[460px] overflow-hidden rounded-3xl"
+        className="panel max-h-[calc(100vh-2rem)] w-full max-w-[460px] overflow-y-auto rounded-3xl"
       >
         <div className="border-b border-line px-6 pt-6 pb-5">
           <div className="label-xs flex justify-between">
@@ -240,6 +262,11 @@ export function MissionReportCard({
             </motion.div>
           ))}
         </dl>
+        <TrajectoryPlot
+          samples={plan.trajectory}
+          milestones={plan.milestones}
+        />
+        <StagingSummary rows={plan.staging} />
         <p className="px-6 pt-2 pb-5 font-mono text-[11.5px] text-muted">
           “{report.quip}”
         </p>
@@ -276,6 +303,51 @@ export function MissionReportCard({
         </div>
       </motion.div>
     </motion.div>
+  );
+}
+
+const STATUS_TONE: Record<StagingRow["status"], string> = {
+  nominal: "text-good",
+  "spare fuel": "text-muted",
+  "engine out": "text-warn",
+  failed: "text-bad",
+  unused: "text-faint",
+};
+
+/** What each stage burned and how it went. */
+function StagingSummary({ rows }: { rows: StagingRow[] }) {
+  if (!rows.length) return null;
+  return (
+    <div className="px-6 pt-3">
+      <div className="label-xs mb-1.5">Staging</div>
+      <ul className="space-y-1.5 font-mono text-[10.5px]">
+        {rows.map((row) => (
+          <li
+            key={row.label}
+            className="grid grid-cols-[1fr_64px_auto] items-center gap-3"
+          >
+            <span className="truncate text-muted">
+              {row.label}
+              <span className="ml-1.5 text-faint">{row.propellant}</span>
+              {row.deltaV > 0 && (
+                <span className="ml-1.5 text-faint">
+                  {Math.round(row.deltaV).toLocaleString("en-US")} m/s
+                </span>
+              )}
+            </span>
+            <span className="h-[3px] overflow-hidden rounded-full bg-white/5">
+              <span
+                className="block h-full rounded-full bg-[var(--accent)]"
+                style={{ width: `${Math.round(row.burned * 100)}%` }}
+              />
+            </span>
+            <span className={`text-right uppercase ${STATUS_TONE[row.status]}`}>
+              {row.status}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

@@ -55,9 +55,15 @@ function templateBooster(
     radius,
     color: color ?? reference?.color ?? null,
     top: reference?.top ?? "cone",
+    propellant: reference?.propellant ?? "solid",
     engine: reference
       ? { ...reference.engine }
-      : createEngine({ count: 1, size: Math.min(radius * 0.8, 2), power: 5 }),
+      : createEngine({
+          count: 1,
+          size: Math.min(radius * 0.8, 2),
+          power: 5,
+          gimbal: false,
+        }),
   });
 }
 
@@ -99,6 +105,28 @@ function engineTargets(
       );
       return owner ? [owner.engine] : [];
     }
+  }
+}
+
+/** Finds every stage or booster addressed by a propellant target. */
+function propellantTargets(
+  config: RocketConfig,
+  target: string,
+  id?: string,
+): (Stage | Booster)[] {
+  switch (target) {
+    case "core":
+      return config.stages.slice(0, 1);
+    case "upper":
+      return config.stages.slice(1);
+    case "stages":
+      return config.stages;
+    case "boosters":
+      return config.boosters;
+    case "all":
+      return [...config.stages, ...config.boosters];
+    default:
+      return [...config.stages, ...config.boosters].filter((c) => c.id === id);
   }
 }
 
@@ -196,6 +224,7 @@ function applyAction(
         const stage = createStage({
           height: action.height ?? old.height * 1.1,
           radius: action.radius ?? old.radius * 1.08,
+          propellant: old.propellant,
           engine: { ...old.engine },
         });
         old.engine = createEngine({
@@ -203,6 +232,7 @@ function applyAction(
           size: old.engine.size,
           power: old.engine.power,
           style: old.engine.style,
+          gimbal: old.engine.gimbal,
           color: old.engine.color,
         });
         config.stages.unshift(stage);
@@ -212,6 +242,7 @@ function applyAction(
           createStage({
             height: action.height ?? top.height * 0.7,
             radius: action.radius ?? top.radius * (1 - top.taper),
+            propellant: top.propellant,
             engine: createEngine({
               count: 1,
               size: Math.min(1.2, top.radius * 0.5),
@@ -242,8 +273,14 @@ function applyAction(
             SIZE_FACTOR[action.size] * (action.target === "boosters" ? 0.8 : 1);
         if (action.power !== undefined) engine.power = action.power;
         if (action.style) engine.style = action.style;
+        if (action.gimbal !== undefined) engine.gimbal = action.gimbal;
         if (action.color) engine.color = action.color;
       });
+      break;
+    case "set_propellant":
+      propellantTargets(config, action.target, action.id).forEach(
+        (column) => (column.propellant = action.value),
+      );
       break;
     case "set_color":
       applyColor(config, action.target, action.value, action.id);
@@ -271,6 +308,14 @@ function applyAction(
       }
       if (action.crew !== undefined) config.payload.crew = action.crew;
       if (action.size) config.payload.height = 5 * SIZE_FACTOR[action.size];
+      if (action.kind === "capsule") {
+        config.payload.heatShield = action.heatShield ?? true;
+        config.payload.parachutes = action.parachutes ?? true;
+      }
+      if (action.heatShield !== undefined)
+        config.payload.heatShield = action.heatShield;
+      if (action.parachutes !== undefined)
+        config.payload.parachutes = action.parachutes;
       break;
     case "set_fins": {
       const fins = config.fins ?? {

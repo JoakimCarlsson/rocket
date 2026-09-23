@@ -5,14 +5,18 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { get2DContext } from "@/lib/canvas";
 import {
+  FAIRING_SEGMENT,
   type Nozzle,
   type PlacedPart,
   type RocketLayout,
   UPPER_SEGMENT,
 } from "@/lib/rocket/layout";
-import { thrustToWeight } from "@/lib/rocket/stats";
 import type { RocketConfig } from "@/lib/rocket/types";
-import type { LaunchEvent, LaunchPlan } from "@/lib/sim/simulate";
+import {
+  type LaunchEvent,
+  type LaunchPlan,
+  telemetryAt,
+} from "@/lib/sim/simulate";
 import { PartMesh, type RenderFlags, RenderFlagsProvider } from "./PartMesh";
 import { ParticleField } from "./particles";
 
@@ -85,6 +89,13 @@ function buildSegments(layout: RocketLayout): SegmentData[] {
   });
 }
 
+/** Surface colours for the body shown on arrival. */
+const CELESTIAL = {
+  moon: { color: "#d9d6cf", emissive: "#3a3833" },
+  mars: { color: "#c4552b", emissive: "#3a1206" },
+  sun: { color: "#ffd27a", emissive: "#ff9a2a" },
+} as const;
+
 /** Deterministic noise used for flicker and shake. */
 function wiggle(t: number, seed: number): number {
   return (
@@ -151,7 +162,7 @@ export function LaunchScene({
     [fields],
   );
 
-  const twr = thrustToWeight(plan.stats);
+  const twr = plan.stats.twr;
   const tilt = THREE.MathUtils.degToRad(rocket.tilt);
   const glow = useMemo(
     () => new THREE.Color(rocket.appearance.glow),
@@ -409,6 +420,26 @@ export function LaunchScene({
         firing.current = new Set();
         s.angVel = (Math.random() > 0.5 ? 1 : -1) * 0.5;
         break;
+      case "burnout":
+        s.thrusting = false;
+        firing.current = new Set();
+        break;
+      case "engine_out":
+        s.shake = Math.max(s.shake, 1);
+        burst(s.pos.clone().addScaledVector(dir, layout.minY), 0.15);
+        break;
+      case "fairing_sep":
+        detach(
+          FAIRING_SEGMENT,
+          s.vel.clone().add(new THREE.Vector3(9, 3, 4)),
+          new THREE.Vector3(0.8, 0.4, 1.4),
+        );
+        break;
+      case "impact":
+        explode();
+        break;
+      case "maxq":
+        break;
       case "explode":
         explode();
         break;
@@ -588,8 +619,11 @@ export function LaunchScene({
         s.vel.y -= GRAVITY * dt;
       }
       if (!s.spinning && burning) {
-        const program =
-          rocket.tilt === 0 && t > 5 ? Math.min(0.55, (t - 5) * 0.055) : tilt;
+        const program = THREE.MathUtils.clamp(
+          THREE.MathUtils.degToRad(telemetryAt(plan, t).pitch),
+          -1,
+          1,
+        );
         s.angle = THREE.MathUtils.damp(s.angle, program, 0.8, dt);
       }
       if (s.spinning) s.angVel *= 1 + 0.25 * dt;
@@ -657,7 +691,12 @@ export function LaunchScene({
     if (flash.current) flash.current.intensity *= Math.max(0, 1 - dt * 3.5);
 
     const altitude = Math.max(0, s.pos.y - PAD_TOP + layout.minY);
-    telemetry.current = { altitude, speed: s.vel.length(), t };
+    const physical = telemetryAt(plan, t);
+    telemetry.current = {
+      altitude: physical.altitude,
+      speed: physical.speed,
+      t,
+    };
     const space = THREE.MathUtils.smoothstep(altitude, 120, 1100);
     if (sky.current) sky.current.uniforms.uSpace.value = space;
     if (stars.current) stars.current.opacity = space;
@@ -683,7 +722,13 @@ export function LaunchScene({
   });
 
   const celestialKind =
-    plan.outcome === "lunar" ? "moon" : plan.outcome === "mars" ? "mars" : null;
+    plan.outcome === "lunar"
+      ? "moon"
+      : plan.outcome === "mars"
+        ? "mars"
+        : plan.outcome === "solar"
+          ? "sun"
+          : null;
 
   return (
     <RenderFlagsProvider value={flags}>
@@ -763,9 +808,9 @@ export function LaunchScene({
           <mesh>
             <sphereGeometry args={[420, 64, 32]} />
             <meshStandardMaterial
-              color={celestialKind === "moon" ? "#d9d6cf" : "#c4552b"}
+              color={CELESTIAL[celestialKind].color}
               roughness={1}
-              emissive={celestialKind === "moon" ? "#3a3833" : "#3a1206"}
+              emissive={CELESTIAL[celestialKind].emissive}
               fog={false}
             />
           </mesh>
