@@ -1,8 +1,21 @@
+# Everything the image does not need is dropped here, so a `docker build` does
+# not ship a local checkout's caches or state.
+
 .git
-.next
-node_modules
-.env*
-!.env.example
+.github
+
+# Build output and caches.
+bin/
+*.exe
+tmp/
+web/node_modules/
+web/.next/
+web/out/
 *.tsbuildinfo
-npm-debug.log*
-README.md
+web/next-env.d.ts
+
+# Local state and secrets.
+.env
+
+# Not needed to compile or serve.
+*.md

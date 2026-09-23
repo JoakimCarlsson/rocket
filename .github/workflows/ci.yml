@@ -6,14 +6,37 @@ permissions:
   contents: read
 
 jobs:
-  quality:
+  web:
     runs-on: self-hosted
+    defaults:
+      run:
+        working-directory: web
     steps:
       - uses: actions/checkout@v6.0.2
       - uses: actions/setup-node@v7.0.0
         with:
           node-version: 24
           cache: npm
+          cache-dependency-path: web/package-lock.json
       - run: npm ci
       - name: Check lint and formatting
         run: npx biome ci .
+      - name: Build static export
+        run: npm run build
+
+  api:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: go vet
+        run: go vet ./...
+      - name: Build api binary
+        run: go build ./cmd/api
+      - name: Lint
+        run: |
+          go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2
+          "$(go env GOPATH)/bin/golangci-lint" run ./...

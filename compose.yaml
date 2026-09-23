@@ -1,9 +1,0 @@
-services:
-  web:
-    build: .
-    restart: unless-stopped
-    ports:
-      - "3002:3000"
-    environment:
-      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:?Set OPENROUTER_API_KEY in the environment or an env file}
-      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-}
