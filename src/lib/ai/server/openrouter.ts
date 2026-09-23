@@ -1,4 +1,4 @@
-import { SYSTEM_PROMPT, buildUserMessage } from "../prompt";
+import { buildUserMessage, SYSTEM_PROMPT } from "../prompt";
 import type { InterpretRequest } from "../provider";
 import type { ModelClient } from "./model-client";
 
@@ -56,7 +56,9 @@ const OUTPUT_SCHEMA = {
 };
 
 interface ChatCompletion {
-  choices?: { message?: { content?: string | null; refusal?: string | null } }[];
+  choices?: {
+    message?: { content?: string | null; refusal?: string | null };
+  }[];
 }
 
 /** OpenRouter-backed model client using strict JSON-schema structured outputs. */
@@ -67,10 +69,15 @@ export class OpenRouterModelClient implements ModelClient {
   private readonly model: string;
 
   /** Creates a client for the configured OpenRouter model. */
-  constructor(apiKey: string, model = process.env.OPENROUTER_MODEL || DEFAULT_MODEL) {
+  constructor(
+    apiKey: string,
+    model = process.env.OPENROUTER_MODEL || DEFAULT_MODEL,
+  ) {
     this.apiKey = apiKey;
     this.model = model;
-    this.label = model.split("/").pop()!.toUpperCase().replace(/-/g, " ");
+    this.label = (model.split("/").pop() ?? model)
+      .toUpperCase()
+      .replace(/-/g, " ");
   }
 
   /** Asks the model for rocket actions and returns the parsed JSON envelope. */
@@ -90,13 +97,28 @@ export class OpenRouterModelClient implements ModelClient {
           { role: "system", content: SYSTEM_PROMPT },
           { role: "user", content: buildUserMessage(request) },
         ],
-        response_format: { type: "json_schema", json_schema: { name: "rocket_actions", strict: true, schema: OUTPUT_SCHEMA } },
+        response_format: {
+          type: "json_schema",
+          json_schema: {
+            name: "rocket_actions",
+            strict: true,
+            schema: OUTPUT_SCHEMA,
+          },
+        },
         provider: { require_parameters: true },
       }),
     });
-    if (!response.ok) throw new Error(`OpenRouter returned ${response.status}: ${(await response.text()).slice(0, 300)}`);
-    const message = ((await response.json()) as ChatCompletion).choices?.[0]?.message;
-    if (message?.refusal) return { actions: [], response: "Mission control declined that one. Try a different change." };
+    if (!response.ok)
+      throw new Error(
+        `OpenRouter returned ${response.status}: ${(await response.text()).slice(0, 300)}`,
+      );
+    const message = ((await response.json()) as ChatCompletion).choices?.[0]
+      ?.message;
+    if (message?.refusal)
+      return {
+        actions: [],
+        response: "Mission control declined that one. Try a different change.",
+      };
     return JSON.parse(message?.content ?? "{}");
   }
 }

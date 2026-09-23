@@ -54,4 +54,12 @@ export function resolveColor(input: string): string | null {
 }
 
 /** Colour cycle used for rainbow paint jobs. */
-export const RAINBOW = ["#ff3b30", "#ff9500", "#ffd60a", "#34c759", "#0a84ff", "#5e5ce6", "#bf5af2"];
+export const RAINBOW = [
+  "#ff3b30",
+  "#ff9500",
+  "#ffd60a",
+  "#34c759",
+  "#0a84ff",
+  "#5e5ce6",
+  "#bf5af2",
+];

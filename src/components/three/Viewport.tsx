@@ -7,7 +7,7 @@ import type { RocketConfig } from "@/lib/rocket/types";
 import type { LaunchPlan } from "@/lib/sim/simulate";
 import { sound } from "@/lib/sound";
 import { Bay, BayCamera } from "./Bay";
-import { LaunchScene, type LaunchCue, type Telemetry } from "./LaunchScene";
+import { type LaunchCue, LaunchScene, type Telemetry } from "./LaunchScene";
 
 /** Props for the main 3D viewport. */
 export interface ViewportProps {
@@ -23,7 +23,17 @@ export interface ViewportProps {
 }
 
 /** The single WebGL canvas for the builder; switches between the bay and the launch pad. */
-export function Viewport({ rocket, scene, plan, attempt, labels, quality, telemetry, onCue, onLaunchComplete }: ViewportProps) {
+export function Viewport({
+  rocket,
+  scene,
+  plan,
+  attempt,
+  labels,
+  quality,
+  telemetry,
+  onCue,
+  onLaunchComplete,
+}: ViewportProps) {
   const layout = useMemo(() => layoutRocket(rocket), [rocket]);
   const lastSnap = useRef(0);
   const onPartLanded = useCallback((part: PlacedPart) => {
@@ -43,11 +53,26 @@ export function Viewport({ rocket, scene, plan, attempt, labels, quality, teleme
       <Suspense fallback={null}>
         {scene === "bay" || !plan ? (
           <>
-            <Bay rocket={rocket} layout={layout} labels={labels} quality={quality} onPartLanded={onPartLanded} />
+            <Bay
+              rocket={rocket}
+              layout={layout}
+              labels={labels}
+              quality={quality}
+              onPartLanded={onPartLanded}
+            />
             <BayCamera layout={layout} autoRotate />
           </>
         ) : (
-          <LaunchScene key={`${attempt}`} rocket={rocket} layout={layout} plan={plan} quality={quality} telemetry={telemetry} onCue={onCue} onComplete={onLaunchComplete} />
+          <LaunchScene
+            key={`${attempt}`}
+            rocket={rocket}
+            layout={layout}
+            plan={plan}
+            quality={quality}
+            telemetry={telemetry}
+            onCue={onCue}
+            onComplete={onLaunchComplete}
+          />
         )}
       </Suspense>
     </Canvas>

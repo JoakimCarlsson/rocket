@@ -7,20 +7,38 @@ import { useMemo, useRef, useState } from "react";
 import { OutcomeBadge } from "@/components/explore/OutcomeBadge";
 import { Wordmark } from "@/components/ui/BrandRail";
 import { Icon } from "@/components/ui/Icon";
+import { get2DContext } from "@/lib/canvas";
 import { STAT_META } from "@/lib/format";
 import { handOff } from "@/lib/persistence";
 import { computeStats } from "@/lib/rocket/stats";
 import type { SharePayload } from "@/lib/share";
 import { simulateLaunch } from "@/lib/sim/simulate";
 
-const ShowcaseViewport = dynamic(() => import("@/components/three/ShowcaseViewport").then((m) => m.ShowcaseViewport), { ssr: false });
+const ShowcaseViewport = dynamic(
+  () =>
+    import("@/components/three/ShowcaseViewport").then(
+      (m) => m.ShowcaseViewport,
+    ),
+  { ssr: false },
+);
 
 /** Public page for one shared rocket, with an optional share-card rendering mode. */
-export function SharedRocket({ id, payload, card }: { id: string; payload: SharePayload; card: boolean }) {
+export function SharedRocket({
+  id,
+  payload,
+  card,
+}: {
+  id: string;
+  payload: SharePayload;
+  card: boolean;
+}) {
   const router = useRouter();
   const { rocket } = payload;
   const stats = useMemo(() => computeStats(rocket), [rocket]);
-  const plan = useMemo(() => simulateLaunch(rocket, payload.attempt ?? 1), [rocket, payload.attempt]);
+  const plan = useMemo(
+    () => simulateLaunch(rocket, payload.attempt ?? 1),
+    [rocket, payload.attempt],
+  );
   const [copied, setCopied] = useState(false);
 
   const remix = () => {
@@ -29,7 +47,9 @@ export function SharedRocket({ id, payload, card }: { id: string; payload: Share
   };
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(window.location.href.replace(/\?.*$/, ""));
+      await navigator.clipboard.writeText(
+        window.location.href.replace(/\?.*$/, ""),
+      );
       setCopied(true);
       setTimeout(() => setCopied(false), 1600);
     } catch {
@@ -37,7 +57,14 @@ export function SharedRocket({ id, payload, card }: { id: string; payload: Share
     }
   };
 
-  if (card) return <ShareCard payload={payload} stats={stats} headline={plan.report.headline} />;
+  if (card)
+    return (
+      <ShareCard
+        payload={payload}
+        stats={stats}
+        headline={plan.report.headline}
+      />
+    );
 
   return (
     <main className="min-h-screen bg-bg lg:grid lg:h-screen lg:grid-cols-[1fr_420px] lg:overflow-hidden">
@@ -47,7 +74,10 @@ export function SharedRocket({ id, payload, card }: { id: string; payload: Share
           <div className="pointer-events-auto">
             <Wordmark />
           </div>
-          <Link href="/explore" className="pointer-events-auto label-xs hover:text-text">
+          <Link
+            href="/explore"
+            className="pointer-events-auto label-xs hover:text-text"
+          >
             Explore →
           </Link>
         </div>
@@ -55,8 +85,14 @@ export function SharedRocket({ id, payload, card }: { id: string; payload: Share
       <aside className="flex flex-col gap-6 border-l border-line bg-panel-solid p-6 lg:overflow-y-auto">
         <div>
           <div className="label-xs">Shared vehicle · {payload.creator}</div>
-          <h1 className="mt-2 font-display text-[32px] leading-[1.02] font-extrabold tracking-tight">{rocket.name}</h1>
-          {payload.prompt && <p className="mt-3 font-mono text-[12px] leading-relaxed text-text/70">“{payload.prompt}”</p>}
+          <h1 className="mt-2 font-display text-[32px] leading-[1.02] font-extrabold tracking-tight">
+            {rocket.name}
+          </h1>
+          {payload.prompt && (
+            <p className="mt-3 font-mono text-[12px] leading-relaxed text-text/70">
+              “{payload.prompt}”
+            </p>
+          )}
         </div>
 
         <div className="rounded-2xl border border-line p-4">
@@ -66,7 +102,10 @@ export function SharedRocket({ id, payload, card }: { id: string; payload: Share
           </div>
           <dl className="space-y-1.5">
             {plan.report.rows.map((row) => (
-              <div key={row.label} className="flex justify-between gap-4 text-[13px]">
+              <div
+                key={row.label}
+                className="flex justify-between gap-4 text-[13px]"
+              >
                 <dt className="label-xs">{row.label}</dt>
                 <dd className="text-right">{row.value}</dd>
               </div>
@@ -85,17 +124,28 @@ export function SharedRocket({ id, payload, card }: { id: string; payload: Share
             </div>
           ))}
         </div>
-        <p className="label-xs text-faint">All numbers are fictional game values.</p>
+        <p className="label-xs text-faint">
+          All numbers are fictional game values.
+        </p>
 
         <div className="mt-auto grid gap-2">
-          <button onClick={remix} className="flex h-12 items-center justify-center gap-2 rounded-xl bg-accent font-display text-[14px] font-extrabold tracking-[0.1em] text-black">
+          <button
+            onClick={remix}
+            className="flex h-12 items-center justify-center gap-2 rounded-xl bg-accent font-display text-[14px] font-extrabold tracking-[0.1em] text-black"
+          >
             <Icon name="remix" size={16} /> REMIX THIS ROCKET
           </button>
           <div className="grid grid-cols-2 gap-2">
-            <button onClick={copy} className="flex h-11 items-center justify-center gap-2 rounded-xl border border-line font-mono text-[10.5px] tracking-[0.14em] text-muted hover:text-text">
+            <button
+              onClick={copy}
+              className="flex h-11 items-center justify-center gap-2 rounded-xl border border-line font-mono text-[10.5px] tracking-[0.14em] text-muted hover:text-text"
+            >
               <Icon name="copy" size={14} /> {copied ? "COPIED" : "COPY LINK"}
             </button>
-            <Link href={`/r/${id}?card=1`} className="flex h-11 items-center justify-center gap-2 rounded-xl border border-line font-mono text-[10.5px] tracking-[0.14em] text-muted hover:text-text">
+            <Link
+              href={`/r/${id}?card=1`}
+              className="flex h-11 items-center justify-center gap-2 rounded-xl border border-line font-mono text-[10.5px] tracking-[0.14em] text-muted hover:text-text"
+            >
               <Icon name="download" size={14} /> SHARE CARD
             </Link>
           </div>
@@ -109,31 +159,47 @@ const CARD_W = 1200;
 const CARD_H = 630;
 
 /** 1200×630 share card: live render on the left, typography on the right, exportable as PNG. */
-function ShareCard({ payload, stats, headline }: { payload: SharePayload; stats: ReturnType<typeof computeStats>; headline: string }) {
+function ShareCard({
+  payload,
+  stats,
+  headline,
+}: {
+  payload: SharePayload;
+  stats: ReturnType<typeof computeStats>;
+  headline: string;
+}) {
   const frame = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
 
   const download = async () => {
     const source = frame.current?.querySelector("canvas");
     if (!source) return;
-    setBusy(true);
-    await document.fonts.ready;
     const out = document.createElement("canvas");
     out.width = CARD_W * 2;
     out.height = CARD_H * 2;
-    const g = out.getContext("2d")!;
+    const g = get2DContext(out);
+    setBusy(true);
+    await document.fonts.ready;
     g.scale(2, 2);
     g.fillStyle = "#06070a";
     g.fillRect(0, 0, CARD_W, CARD_H);
     g.drawImage(source, 0, 0, 600, CARD_H);
-    const display = getComputedStyle(document.body).getPropertyValue("--font-display") || "sans-serif";
-    const mono = getComputedStyle(document.body).getPropertyValue("--font-mono") || "monospace";
+    const display =
+      getComputedStyle(document.body).getPropertyValue("--font-display") ||
+      "sans-serif";
+    const mono =
+      getComputedStyle(document.body).getPropertyValue("--font-mono") ||
+      "monospace";
     g.fillStyle = "#ff5b1f";
     g.font = `800 20px ${display}`;
     g.fillText("ROCKET.JDADDY", 648, 70);
     g.fillStyle = "#858a94";
     g.font = `500 13px ${mono}`;
-    g.fillText(`${payload.creator.toUpperCase()} · FICTIONAL VEHICLE`, 648, 100);
+    g.fillText(
+      `${payload.creator.toUpperCase()} · FICTIONAL VEHICLE`,
+      648,
+      100,
+    );
     g.fillStyle = "#ecebe7";
     g.font = `800 50px ${display}`;
     wrap(g, payload.rocket.name, 648, 175, 510, 56);
@@ -158,22 +224,38 @@ function ShareCard({ payload, stats, headline }: { payload: SharePayload; stats:
 
   return (
     <main className="grid min-h-screen place-items-center gap-6 bg-black p-6">
-      <div className="origin-top scale-[0.3] sm:scale-[0.6] lg:scale-100" style={{ width: CARD_W, height: CARD_H }}>
+      <div
+        className="origin-top scale-[0.3] sm:scale-[0.6] lg:scale-100"
+        style={{ width: CARD_W, height: CARD_H }}
+      >
         <div className="flex h-full w-full overflow-hidden rounded-3xl border border-line bg-bg">
           <div ref={frame} className="relative h-full w-[600px]">
-            <ShowcaseViewport rocket={payload.rocket} capture className="!absolute inset-0" />
+            <ShowcaseViewport
+              rocket={payload.rocket}
+              capture
+              className="!absolute inset-0"
+            />
           </div>
           <div className="flex flex-1 flex-col p-12">
-            <div className="font-display text-[20px] font-extrabold text-accent">ROCKET.JDADDY</div>
-            <div className="label-xs mt-2">{payload.creator} · fictional vehicle</div>
-            <h1 className="mt-8 font-display text-[50px] leading-[1.05] font-extrabold tracking-tight">{payload.rocket.name}</h1>
-            <div className="mt-6 font-display text-[20px] font-bold text-accent-soft">{headline}</div>
+            <div className="font-display text-[20px] font-extrabold text-accent">
+              ROCKET.JDADDY
+            </div>
+            <div className="label-xs mt-2">
+              {payload.creator} · fictional vehicle
+            </div>
+            <h1 className="mt-8 font-display text-[50px] leading-[1.05] font-extrabold tracking-tight">
+              {payload.rocket.name}
+            </h1>
+            <div className="mt-6 font-display text-[20px] font-bold text-accent-soft">
+              {headline}
+            </div>
             <div className="mt-auto grid grid-cols-2 gap-x-8 gap-y-4">
               {STAT_META.map((meta) => (
                 <div key={meta.key}>
                   <div className="label-xs">{meta.label}</div>
                   <div className="font-mono text-[15px]">
-                    {meta.format(stats[meta.key])} <span className="text-faint">{meta.unit}</span>
+                    {meta.format(stats[meta.key])}{" "}
+                    <span className="text-faint">{meta.unit}</span>
                   </div>
                 </div>
               ))}
@@ -181,7 +263,11 @@ function ShareCard({ payload, stats, headline }: { payload: SharePayload; stats:
           </div>
         </div>
       </div>
-      <button onClick={download} disabled={busy} className="flex h-12 items-center gap-2 rounded-xl bg-accent px-6 font-display text-[13px] font-bold tracking-[0.1em] text-black disabled:opacity-50">
+      <button
+        onClick={download}
+        disabled={busy}
+        className="flex h-12 items-center gap-2 rounded-xl bg-accent px-6 font-display text-[13px] font-bold tracking-[0.1em] text-black disabled:opacity-50"
+      >
         <Icon name="download" size={16} /> DOWNLOAD PNG
       </button>
     </main>
@@ -189,7 +275,14 @@ function ShareCard({ payload, stats, headline }: { payload: SharePayload; stats:
 }
 
 /** Draws text wrapped to a width on a 2D canvas. */
-function wrap(g: CanvasRenderingContext2D, text: string, x: number, y: number, width: number, lineHeight: number): void {
+function wrap(
+  g: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  width: number,
+  lineHeight: number,
+): void {
   const words = text.split(" ");
   let line = "";
   let row = 0;

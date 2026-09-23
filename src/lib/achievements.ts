@@ -11,14 +11,46 @@ export interface Achievement {
 
 /** Every achievement in the game. */
 export const ACHIEVEMENTS: Achievement[] = [
-  { id: "too_many_boosters", title: "TOO MANY BOOSTERS", description: "Strap ten or more boosters to one rocket." },
-  { id: "questionable", title: "QUESTIONABLE ENGINEERING", description: "Drop fictional reliability below 35%." },
-  { id: "sideways", title: "WHY IS IT SIDEWAYS?", description: "Tilt the rocket 45° or more." },
-  { id: "moon_or_bust", title: "MOON OR BUST", description: "Point a rocket at the Moon." },
-  { id: "against_all_odds", title: "AGAINST ALL ODDS", description: "Succeed with a design that should not work." },
-  { id: "absolute_unit", title: "ABSOLUTE UNIT", description: "Build a rocket taller than 150 m." },
-  { id: "kaboom", title: "EXCELLENT FOOTAGE", description: "Experience a rapid unscheduled disassembly." },
-  { id: "quack", title: "MORALE OFFICER", description: "Install a rubber duck." },
+  {
+    id: "too_many_boosters",
+    title: "TOO MANY BOOSTERS",
+    description: "Strap ten or more boosters to one rocket.",
+  },
+  {
+    id: "questionable",
+    title: "QUESTIONABLE ENGINEERING",
+    description: "Drop fictional reliability below 35%.",
+  },
+  {
+    id: "sideways",
+    title: "WHY IS IT SIDEWAYS?",
+    description: "Tilt the rocket 45° or more.",
+  },
+  {
+    id: "moon_or_bust",
+    title: "MOON OR BUST",
+    description: "Point a rocket at the Moon.",
+  },
+  {
+    id: "against_all_odds",
+    title: "AGAINST ALL ODDS",
+    description: "Succeed with a design that should not work.",
+  },
+  {
+    id: "absolute_unit",
+    title: "ABSOLUTE UNIT",
+    description: "Build a rocket taller than 150 m.",
+  },
+  {
+    id: "kaboom",
+    title: "EXCELLENT FOOTAGE",
+    description: "Experience a rapid unscheduled disassembly.",
+  },
+  {
+    id: "quack",
+    title: "MORALE OFFICER",
+    description: "Install a rubber duck.",
+  },
   { id: "orbit", title: "OFFICIALLY IN SPACE", description: "Reach orbit." },
 ];
 
@@ -31,14 +63,19 @@ export function configAchievements(config: RocketConfig): string[] {
   if (Math.abs(config.tilt) >= 45) earned.push("sideways");
   if (config.destination === "moon") earned.push("moon_or_bust");
   if (stats.height > 150) earned.push("absolute_unit");
-  if (config.decorativeParts.some((d) => d.kind === "duck")) earned.push("quack");
+  if (config.decorativeParts.some((d) => d.kind === "duck"))
+    earned.push("quack");
   return earned;
 }
 
 /** Returns ids of achievements earned by a launch. */
 export function launchAchievements(plan: LaunchPlan): string[] {
   const earned: string[] = [];
-  if (plan.outcome === "against_all_odds" || (plan.report.grade === "success" && plan.stats.reliability < 40)) earned.push("against_all_odds");
+  if (
+    plan.outcome === "against_all_odds" ||
+    (plan.report.grade === "success" && plan.stats.reliability < 40)
+  )
+    earned.push("against_all_odds");
   if (plan.events.some((e) => e.type === "explode")) earned.push("kaboom");
   if (plan.report.grade === "success") earned.push("orbit");
   return earned;

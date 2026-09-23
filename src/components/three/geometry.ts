@@ -3,7 +3,11 @@ import * as THREE from "three";
 const SEGMENTS = 40;
 
 /** Samples a radius profile into lathe points from bottom (t=0) to top (t=1). */
-function sampleProfile(height: number, steps: number, radiusAt: (t: number) => number): THREE.Vector2[] {
+function sampleProfile(
+  height: number,
+  steps: number,
+  radiusAt: (t: number) => number,
+): THREE.Vector2[] {
   const points: THREE.Vector2[] = [];
   for (let i = 0; i <= steps; i++) {
     const t = i / steps;
@@ -13,26 +17,39 @@ function sampleProfile(height: number, steps: number, radiusAt: (t: number) => n
 }
 
 /** Builds a nose shape of the given style sitting on y=0. */
-export function noseGeometry(style: string, height: number, radius: number): THREE.BufferGeometry {
+export function noseGeometry(
+  style: string,
+  height: number,
+  radius: number,
+): THREE.BufferGeometry {
   const profile = (t: number): number => {
     switch (style) {
       case "cone":
         return radius * (1 - t);
       case "needle":
-        return t < 0.72 ? radius * Math.pow(1 - t / 0.72, 0.75) * 0.96 + radius * 0.04 * (1 - t) : radius * 0.04 * (1 - t) * 3;
+        return t < 0.72
+          ? radius * (1 - t / 0.72) ** 0.75 * 0.96 + radius * 0.04 * (1 - t)
+          : radius * 0.04 * (1 - t) * 3;
       case "blunt":
         return radius * Math.cos((t * Math.PI) / 2) ** 0.7;
       case "spike":
-        return t < 0.5 ? radius * (1 - t * 1.5) : radius * 0.25 * Math.max(0, 1 - (t - 0.5) / 0.5) * 0.4;
+        return t < 0.5
+          ? radius * (1 - t * 1.5)
+          : radius * 0.25 * Math.max(0, 1 - (t - 0.5) / 0.5) * 0.4;
       default:
-        return radius * Math.pow(1 - t * t, 0.62);
+        return radius * (1 - t * t) ** 0.62;
     }
   };
   return new THREE.LatheGeometry(sampleProfile(height, 28, profile), SEGMENTS);
 }
 
 /** Builds an engine nozzle whose exit sits at y=0 and throat at y=height. */
-export function nozzleGeometry(style: string, height: number, exit: number, throat: number): THREE.BufferGeometry {
+export function nozzleGeometry(
+  style: string,
+  height: number,
+  exit: number,
+  throat: number,
+): THREE.BufferGeometry {
   if (style === "aerospike") {
     return new THREE.LatheGeometry(
       sampleProfile(height, 16, (t) => exit * 0.9 * t + throat * 0.3),
@@ -42,13 +59,22 @@ export function nozzleGeometry(style: string, height: number, exit: number, thro
   const power = style === "trumpet" ? 4.2 : style === "flared" ? 2.8 : 1.8;
   const flare = style === "trumpet" ? 1.25 : style === "flared" ? 1.12 : 1;
   return new THREE.LatheGeometry(
-    sampleProfile(height, 18, (t) => throat + (exit * flare - throat) * Math.pow(1 - t, power)),
+    sampleProfile(
+      height,
+      18,
+      (t) => throat + (exit * flare - throat) * (1 - t) ** power,
+    ),
     28,
   );
 }
 
 /** Builds a flat fin or wing shape in the XY plane, extruded along Z. */
-export function finGeometry(shape: string, height: number, span: number, thickness: number): THREE.BufferGeometry {
+export function finGeometry(
+  shape: string,
+  height: number,
+  span: number,
+  thickness: number,
+): THREE.BufferGeometry {
   const s = new THREE.Shape();
   switch (shape) {
     case "delta":
@@ -115,8 +141,20 @@ export function finGeometry(shape: string, height: number, span: number, thickne
 }
 
 /** Cylinder standing on y=0. */
-export function columnGeometry(radiusTop: number, radiusBottom: number, height: number, segments = SEGMENTS): THREE.BufferGeometry {
-  const geometry = new THREE.CylinderGeometry(radiusTop, radiusBottom, height, segments, 1, false);
+export function columnGeometry(
+  radiusTop: number,
+  radiusBottom: number,
+  height: number,
+  segments = SEGMENTS,
+): THREE.BufferGeometry {
+  const geometry = new THREE.CylinderGeometry(
+    radiusTop,
+    radiusBottom,
+    height,
+    segments,
+    1,
+    false,
+  );
   geometry.translate(0, height / 2, 0);
   return geometry;
 }

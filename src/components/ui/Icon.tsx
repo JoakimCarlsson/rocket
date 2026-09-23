@@ -9,11 +9,13 @@ const PATHS = {
   mute: "M11 5 6 9H2v6h4l5 4V5ZM22 9l-6 6M16 9l6 6",
   tag: "M3 12V3h9l9 9-9 9-9-9ZM7.5 7.5h.01",
   send: "M5 12h14M13 6l6 6-6 6",
-  rocket: "M5 19c1-3 2.5-4.5 4-5M14.5 3.5c3 0 6 3 6 6-2 4-6 7.5-9 8.5l-5-5c1-3 4.5-7 8-9.5ZM15 9h.01",
+  rocket:
+    "M5 19c1-3 2.5-4.5 4-5M14.5 3.5c3 0 6 3 6 6-2 4-6 7.5-9 8.5l-5-5c1-3 4.5-7 8-9.5ZM15 9h.01",
   close: "M6 6l12 12M18 6 6 18",
   menu: "M4 7h16M4 12h16M4 17h16",
   heart: "M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10Z",
-  wrench: "M14.7 6.3a4 4 0 0 0 5 5L21 13l-8 8-3-3 8-8-1.3-1.3a4 4 0 0 0-5-5l2.8 2.8-2.1 2.1-2.8-2.8",
+  wrench:
+    "M14.7 6.3a4 4 0 0 0 5 5L21 13l-8 8-3-3 8-8-1.3-1.3a4 4 0 0 0-5-5l2.8 2.8-2.1 2.1-2.8-2.8",
   remix: "M4 7h11l-3-3M20 17H9l3 3M4 7v4M20 17v-4",
   download: "M12 3v12M7 10l5 5 5-5M4 20h16",
   copy: "M8 8h12v12H8zM4 16V4h12",
@@ -23,9 +25,28 @@ const PATHS = {
 export type IconName = keyof typeof PATHS;
 
 /** Minimal stroke icon set, drawn inline so nothing is fetched. */
-export function Icon({ name, size = 16, className = "" }: { name: IconName; size?: number; className?: string }) {
+export function Icon({
+  name,
+  size = 16,
+  className = "",
+}: {
+  name: IconName;
+  size?: number;
+  className?: string;
+}) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden>
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.7}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+      aria-hidden
+    >
       <path d={PATHS[name]} />
     </svg>
   );

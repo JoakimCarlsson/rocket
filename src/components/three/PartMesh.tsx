@@ -5,8 +5,13 @@ import { createContext, useContext, useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
 import type { PlacedPart } from "@/lib/rocket/layout";
 import type { Finish, Pattern } from "@/lib/rocket/types";
-import { columnGeometry, finGeometry, noseGeometry, nozzleGeometry } from "./geometry";
-import { FINISH_PROPS, bodyTexture } from "./materials";
+import {
+  columnGeometry,
+  finGeometry,
+  noseGeometry,
+  nozzleGeometry,
+} from "./geometry";
+import { bodyTexture, FINISH_PROPS } from "./materials";
 
 /** Mutable render flags shared by every part, written by scenes each frame. */
 export interface RenderFlags {
@@ -14,13 +19,19 @@ export interface RenderFlags {
   time: number;
 }
 
-const RenderFlagsContext = createContext<{ current: RenderFlags }>({ current: { engineGlow: 0, time: 0 } });
+const RenderFlagsContext = createContext<{ current: RenderFlags }>({
+  current: { engineGlow: 0, time: 0 },
+});
 
 /** Provides render flags to parts below. */
 export const RenderFlagsProvider = RenderFlagsContext.Provider;
 
 /** Creates a physical material for the given finish and disposes it when replaced. */
-function useSurface(color: string, finish: Finish, map?: THREE.Texture | null): THREE.MeshPhysicalMaterial {
+function useSurface(
+  color: string,
+  finish: Finish,
+  map?: THREE.Texture | null,
+): THREE.MeshPhysicalMaterial {
   const material = useMemo(() => {
     const f = FINISH_PROPS[finish];
     return new THREE.MeshPhysicalMaterial({
@@ -41,9 +52,15 @@ function useSurface(color: string, finish: Finish, map?: THREE.Texture | null): 
 }
 
 /** Creates a simple standard material. */
-function useBasicSurface(color: string, params: THREE.MeshStandardMaterialParameters = {}): THREE.MeshStandardMaterial {
+function useBasicSurface(
+  color: string,
+  params: THREE.MeshStandardMaterialParameters = {},
+): THREE.MeshStandardMaterial {
   const key = JSON.stringify(params);
-  const material = useMemo(() => new THREE.MeshStandardMaterial(JSON.parse(key)), [key]);
+  const material = useMemo(
+    () => new THREE.MeshStandardMaterial(JSON.parse(key)),
+    [key],
+  );
   useEffect(() => {
     material.color.set(color);
   }, [material, color]);
@@ -52,8 +69,10 @@ function useBasicSurface(color: string, params: THREE.MeshStandardMaterialParame
 }
 
 /** Memoises a geometry and disposes it when inputs change. */
-function useGeometry(factory: () => THREE.BufferGeometry, deps: unknown[]): THREE.BufferGeometry {
-  // eslint-disable-next-line react-hooks/exhaustive-deps, react-hooks/use-memo
+function useGeometry(
+  factory: () => THREE.BufferGeometry,
+  deps: unknown[],
+): THREE.BufferGeometry {
   const geometry = useMemo(factory, deps);
   useEffect(() => () => geometry.dispose(), [geometry]);
   return geometry;
@@ -79,7 +98,11 @@ export function PartMesh({ part, finish }: PartMeshProps) {
       return <Engine part={part} />;
     case "boosterTop":
     case "top":
-      return part.variant === "dome" ? <Dome part={part} /> : <Nose part={part} finish={finish} />;
+      return part.variant === "dome" ? (
+        <Dome part={part} />
+      ) : (
+        <Nose part={part} finish={finish} />
+      );
     case "strut":
       return <Strut part={part} />;
     case "payload":
@@ -122,20 +145,38 @@ function Body({ part, finish }: PartMeshProps) {
   const top = r;
   const bottom = isBooster ? r : r2;
   const pattern = (isBooster ? "bands" : part.variant) as Pattern;
-  const geometry = useGeometry(() => columnGeometry(top, bottom, h), [top, bottom, h]);
-  const map = useMemo(() => bodyTexture(pattern, part.color, part.color2, h, Math.max(top, bottom)), [pattern, part.color, part.color2, h, top, bottom]);
+  const geometry = useGeometry(
+    () => columnGeometry(top, bottom, h),
+    [top, bottom, h],
+  );
+  const map = useMemo(
+    () =>
+      bodyTexture(pattern, part.color, part.color2, h, Math.max(top, bottom)),
+    [pattern, part.color, part.color2, h, top, bottom],
+  );
   useEffect(() => () => map.dispose(), [map]);
   const material = useSurface(part.color, finish, map);
-  return <mesh geometry={geometry} material={material} castShadow receiveShadow />;
+  return (
+    <mesh geometry={geometry} material={material} castShadow receiveShadow />
+  );
 }
 
 /** Adapter section between stages. */
 function Interstage({ part, finish }: PartMeshProps) {
   const { h, r, r2 } = part.dims;
   const geometry = useGeometry(() => columnGeometry(r, r2, h, 24), [r, r2, h]);
-  const material = useSurface(part.color, finish === "chrome" ? "chrome" : "metallic");
-  const ring = useGeometry(() => columnGeometry(r2 * 1.02, r2 * 1.02, 0.25), [r2]);
-  const accent = useBasicSurface(part.color2, { metalness: 0.3, roughness: 0.4 });
+  const material = useSurface(
+    part.color,
+    finish === "chrome" ? "chrome" : "metallic",
+  );
+  const ring = useGeometry(
+    () => columnGeometry(r2 * 1.02, r2 * 1.02, 0.25),
+    [r2],
+  );
+  const accent = useBasicSurface(part.color2, {
+    metalness: 0.3,
+    roughness: 0.4,
+  });
   return (
     <group>
       <mesh geometry={geometry} material={material} castShadow />
@@ -146,8 +187,14 @@ function Interstage({ part, finish }: PartMeshProps) {
 
 /** Thin accent ring at the top of a stage. */
 function Trim({ part }: { part: PlacedPart }) {
-  const geometry = useGeometry(() => columnGeometry(part.dims.r, part.dims.r2, part.dims.h), [part.dims.r, part.dims.r2, part.dims.h]);
-  const material = useBasicSurface(part.color, { metalness: 0.4, roughness: 0.35 });
+  const geometry = useGeometry(
+    () => columnGeometry(part.dims.r, part.dims.r2, part.dims.h),
+    [part.dims.r, part.dims.r2, part.dims.h],
+  );
+  const material = useBasicSurface(part.color, {
+    metalness: 0.4,
+    roughness: 0.35,
+  });
   return <mesh geometry={geometry} material={material} />;
 }
 
@@ -155,10 +202,27 @@ function Trim({ part }: { part: PlacedPart }) {
 function Engine({ part }: { part: PlacedPart }) {
   const flags = useContext(RenderFlagsContext);
   const { h, r, r2, s: power } = part.dims;
-  const bell = useGeometry(() => nozzleGeometry(part.variant, h, r, r2), [part.variant, h, r, r2]);
-  const head = useGeometry(() => columnGeometry(r2 * 1.5, r2 * 1.8, h * 0.28, 16), [r2, h]);
-  const metal = useMemo(() => new THREE.MeshStandardMaterial({ metalness: 0.9, roughness: 0.32, side: THREE.DoubleSide }), []);
-  const glowMat = useMemo(() => new THREE.MeshBasicMaterial({ toneMapped: false }), []);
+  const bell = useGeometry(
+    () => nozzleGeometry(part.variant, h, r, r2),
+    [part.variant, h, r, r2],
+  );
+  const head = useGeometry(
+    () => columnGeometry(r2 * 1.5, r2 * 1.8, h * 0.28, 16),
+    [r2, h],
+  );
+  const metal = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        metalness: 0.9,
+        roughness: 0.32,
+        side: THREE.DoubleSide,
+      }),
+    [],
+  );
+  const glowMat = useMemo(
+    () => new THREE.MeshBasicMaterial({ toneMapped: false }),
+    [],
+  );
   useEffect(() => {
     metal.color.set(part.color);
     glowMat.color.set(part.color2);
@@ -184,7 +248,12 @@ function Engine({ part }: { part: PlacedPart }) {
     <group>
       <mesh geometry={bell} material={metal} castShadow />
       <mesh geometry={head} material={metal} position={[0, h * 0.95, 0]} />
-      <mesh ref={glowRef} material={glowMat} position={[0, h * 0.35, 0]} rotation={[Math.PI / 2, 0, 0]}>
+      <mesh
+        ref={glowRef}
+        material={glowMat}
+        position={[0, h * 0.35, 0]}
+        rotation={[Math.PI / 2, 0, 0]}
+      >
         <circleGeometry args={[r * 0.8, 20]} />
       </mesh>
     </group>
@@ -194,7 +263,10 @@ function Engine({ part }: { part: PlacedPart }) {
 /** Solid nose cone of any style. */
 function Nose({ part, finish }: PartMeshProps) {
   const { h, r } = part.dims;
-  const geometry = useGeometry(() => noseGeometry(part.variant, h, r), [part.variant, h, r]);
+  const geometry = useGeometry(
+    () => noseGeometry(part.variant, h, r),
+    [part.variant, h, r],
+  );
   const material = useSurface(part.color, finish);
   return <mesh geometry={geometry} material={material} castShadow />;
 }
@@ -223,11 +295,17 @@ function Dome({ part }: { part: PlacedPart }) {
   return (
     <group>
       <mesh material={glass}>
-        <sphereGeometry args={[r * 0.99, 40, 20, 0, Math.PI * 2, 0, Math.PI / 2]} />
+        <sphereGeometry
+          args={[r * 0.99, 40, 20, 0, Math.PI * 2, 0, Math.PI / 2]}
+        />
       </mesh>
       <mesh position={[0, 0.05, 0]} rotation={[Math.PI / 2, 0, 0]}>
         <torusGeometry args={[r, 0.12 * scale, 10, 48]} />
-        <meshStandardMaterial color={part.color2} metalness={0.6} roughness={0.3} />
+        <meshStandardMaterial
+          color={part.color2}
+          metalness={0.6}
+          roughness={0.3}
+        />
       </mesh>
       <group scale={scale}>
         <mesh position={[0, 0.5, 0]}>
@@ -240,7 +318,11 @@ function Dome({ part }: { part: PlacedPart }) {
         </mesh>
         <mesh position={[0, 1.95, 0.1]}>
           <sphereGeometry args={[0.3, 16, 12]} />
-          <meshStandardMaterial color="#f4f4f4" roughness={0.2} metalness={0.2} />
+          <meshStandardMaterial
+            color="#f4f4f4"
+            roughness={0.2}
+            metalness={0.2}
+          />
         </mesh>
         <mesh position={[0, 1.95, 0.35]}>
           <sphereGeometry args={[0.18, 12, 8]} />
@@ -257,7 +339,10 @@ function Dome({ part }: { part: PlacedPart }) {
 
 /** Connecting strut between a booster and the core; extends inward along local -X. */
 function Strut({ part }: { part: PlacedPart }) {
-  const material = useBasicSurface(part.color, { metalness: 0.7, roughness: 0.4 });
+  const material = useBasicSurface(part.color, {
+    metalness: 0.7,
+    roughness: 0.4,
+  });
   return (
     <mesh position={[-part.dims.h / 2, 0, 0]} material={material}>
       <boxGeometry args={[part.dims.h, part.dims.r * 2, part.dims.r * 2]} />
@@ -274,7 +359,8 @@ function PayloadSection({ part, finish }: PartMeshProps) {
       const profile: THREE.Vector2[] = [];
       for (let i = 0; i <= 12; i++) {
         const t = i / 12;
-        const rr = t < 0.2 ? r2 + (r - r2) * Math.sin((t / 0.2) * (Math.PI / 2)) : r;
+        const rr =
+          t < 0.2 ? r2 + (r - r2) * Math.sin((t / 0.2) * (Math.PI / 2)) : r;
         profile.push(new THREE.Vector2(rr, t * h));
       }
       return new THREE.LatheGeometry(profile, 40);
@@ -284,14 +370,25 @@ function PayloadSection({ part, finish }: PartMeshProps) {
     return columnGeometry(r, r2, h, 40);
   }, [variant, h, r, r2]);
   const color = variant === "satellite" ? "#d4a93a" : part.color;
-  const material = useSurface(color, variant === "satellite" ? "metallic" : finish);
+  const material = useSurface(
+    color,
+    variant === "satellite" ? "metallic" : finish,
+  );
   const dark = useBasicSurface(part.color2, { metalness: 0.4, roughness: 0.5 });
-  const panel = useBasicSurface("#1a2c55", { metalness: 0.6, roughness: 0.25, emissive: new THREE.Color("#0a1a44") });
+  const panel = useBasicSurface("#1a2c55", {
+    metalness: 0.6,
+    roughness: 0.25,
+    emissive: new THREE.Color("#0a1a44"),
+  });
   return (
     <group>
       <mesh geometry={geometry} material={material} castShadow />
       {variant === "habitat" && (
-        <mesh position={[0, h * 0.5, 0]} rotation={[Math.PI / 2, 0, 0]} material={dark}>
+        <mesh
+          position={[0, h * 0.5, 0]}
+          rotation={[Math.PI / 2, 0, 0]}
+          material={dark}
+        >
           <torusGeometry args={[r * 1.35, Math.max(0.25, r * 0.14), 12, 48]} />
         </mesh>
       )}
@@ -320,7 +417,10 @@ function PayloadSection({ part, finish }: PartMeshProps) {
 function Fin({ part, finish }: PartMeshProps) {
   const { h, r, s } = part.dims;
   const thickness = Math.max(0.12, 0.14 * s);
-  const geometry = useGeometry(() => finGeometry(part.variant, h, r, thickness), [part.variant, h, r, thickness]);
+  const geometry = useGeometry(
+    () => finGeometry(part.variant, h, r, thickness),
+    [part.variant, h, r, thickness],
+  );
   const material = useSurface(part.color, finish);
   return <mesh geometry={geometry} material={material} castShadow />;
 }
@@ -330,8 +430,14 @@ function Leg({ part }: { part: PlacedPart }) {
   const { h, r, s } = part.dims;
   const length = Math.hypot(h, r);
   const angle = Math.atan2(r, h);
-  const material = useBasicSurface(part.color, { metalness: 0.7, roughness: 0.35 });
-  const accent = useBasicSurface(part.color2, { metalness: 0.3, roughness: 0.4 });
+  const material = useBasicSurface(part.color, {
+    metalness: 0.7,
+    roughness: 0.35,
+  });
+  const accent = useBasicSurface(part.color2, {
+    metalness: 0.3,
+    roughness: 0.4,
+  });
   return (
     <group>
       <group rotation={[0, 0, angle]}>
@@ -342,7 +448,11 @@ function Leg({ part }: { part: PlacedPart }) {
       <mesh position={[r, -h + 0.1, 0]} material={accent}>
         <cylinderGeometry args={[0.7 * s, 0.9 * s, 0.25, 16]} />
       </mesh>
-      <mesh position={[r * 0.45, -h * 0.55, 0]} rotation={[0, 0, Math.PI / 2 - angle * 0.4]} material={material}>
+      <mesh
+        position={[r * 0.45, -h * 0.55, 0]}
+        rotation={[0, 0, Math.PI / 2 - angle * 0.4]}
+        material={material}
+      >
         <boxGeometry args={[0.18 * s, r * 0.9, 0.18 * s]} />
       </mesh>
     </group>
@@ -352,8 +462,14 @@ function Leg({ part }: { part: PlacedPart }) {
 /** Thin antenna mast with a ball tip. */
 function Antenna({ part }: { part: PlacedPart }) {
   const { h, r } = part.dims;
-  const material = useBasicSurface("#d9dde2", { metalness: 0.9, roughness: 0.2 });
-  const tip = useBasicSurface(part.color, { emissive: new THREE.Color(part.color), emissiveIntensity: 0.8 });
+  const material = useBasicSurface("#d9dde2", {
+    metalness: 0.9,
+    roughness: 0.2,
+  });
+  const tip = useBasicSurface(part.color, {
+    emissive: new THREE.Color(part.color),
+    emissiveIntensity: 0.8,
+  });
   return (
     <group>
       <mesh position={[0, h / 2, 0]} material={material}>
@@ -368,7 +484,10 @@ function Antenna({ part }: { part: PlacedPart }) {
 
 /** Decorative ring encircling the body. */
 function Ring({ part, finish }: PartMeshProps) {
-  const material = useSurface(part.color, finish === "matte" ? "metallic" : finish);
+  const material = useSurface(
+    part.color,
+    finish === "matte" ? "metallic" : finish,
+  );
   return (
     <mesh rotation={[Math.PI / 2, 0, 0]} material={material}>
       <torusGeometry args={[part.dims.r, part.dims.h, 12, 64]} />
@@ -379,8 +498,16 @@ function Ring({ part, finish }: PartMeshProps) {
 /** Solar panel wing projecting outward along local +X. */
 function SolarPanel({ part }: { part: PlacedPart }) {
   const { h, r } = part.dims;
-  const panel = useBasicSurface(part.color, { metalness: 0.6, roughness: 0.2, emissive: new THREE.Color("#0b1d4d"), emissiveIntensity: 0.6 });
-  const frame = useBasicSurface(part.color2, { metalness: 0.6, roughness: 0.3 });
+  const panel = useBasicSurface(part.color, {
+    metalness: 0.6,
+    roughness: 0.2,
+    emissive: new THREE.Color("#0b1d4d"),
+    emissiveIntensity: 0.6,
+  });
+  const frame = useBasicSurface(part.color2, {
+    metalness: 0.6,
+    roughness: 0.3,
+  });
   return (
     <group>
       <mesh position={[0.6, 0, 0]} material={frame}>
@@ -400,7 +527,10 @@ function Spike({ part }: { part: PlacedPart }) {
     g.translate(0, part.dims.h / 2, 0);
     return g;
   }, [part.dims.r, part.dims.h]);
-  const material = useBasicSurface(part.color, { metalness: 0.85, roughness: 0.2 });
+  const material = useBasicSurface(part.color, {
+    metalness: 0.85,
+    roughness: 0.2,
+  });
   return <mesh geometry={geometry} material={material} castShadow />;
 }
 
@@ -411,7 +541,8 @@ function Light({ part }: { part: PlacedPart }) {
   const base = useMemo(() => new THREE.Color(part.color), [part.color]);
   useFrame(({ clock }) => {
     if (!ref.current) return;
-    const on = 0.35 + 0.65 * Math.max(0, Math.sin(clock.elapsedTime * 3 + phase * 0.9));
+    const on =
+      0.35 + 0.65 * Math.max(0, Math.sin(clock.elapsedTime * 3 + phase * 0.9));
     ref.current.color.copy(base).multiplyScalar(0.4 + on * 1.8);
   });
   return (
@@ -427,7 +558,8 @@ function Flag({ part }: { part: PlacedPart }) {
   const { h, r } = part.dims;
   const cloth = useRef<THREE.Mesh>(null);
   useFrame(({ clock }) => {
-    if (cloth.current) cloth.current.rotation.y = Math.sin(clock.elapsedTime * 2.2) * 0.25;
+    if (cloth.current)
+      cloth.current.rotation.y = Math.sin(clock.elapsedTime * 2.2) * 0.25;
   });
   return (
     <group>
@@ -463,7 +595,11 @@ function GooglyEye({ part }: { part: PlacedPart }) {
     <group>
       <mesh scale={[1, 1, 0.35]}>
         <sphereGeometry args={[r, 24, 16]} />
-        <meshPhysicalMaterial color={part.color} roughness={0.15} clearcoat={1} />
+        <meshPhysicalMaterial
+          color={part.color}
+          roughness={0.15}
+          clearcoat={1}
+        />
       </mesh>
       <mesh ref={pupil} position={[0, 0, r * 0.3]} scale={[1, 1, 0.35]}>
         <sphereGeometry args={[r * 0.48, 16, 12]} />
@@ -480,13 +616,25 @@ function Duck({ part }: { part: PlacedPart }) {
     <group scale={s}>
       <mesh position={[0, 0.7, 0]} scale={[1.1, 0.8, 1.35]}>
         <sphereGeometry args={[0.9, 20, 16]} />
-        <meshPhysicalMaterial color={part.color} roughness={0.25} clearcoat={0.8} />
+        <meshPhysicalMaterial
+          color={part.color}
+          roughness={0.25}
+          clearcoat={0.8}
+        />
       </mesh>
       <mesh position={[0, 1.6, 0.55]}>
         <sphereGeometry args={[0.55, 20, 16]} />
-        <meshPhysicalMaterial color={part.color} roughness={0.25} clearcoat={0.8} />
+        <meshPhysicalMaterial
+          color={part.color}
+          roughness={0.25}
+          clearcoat={0.8}
+        />
       </mesh>
-      <mesh position={[0, 1.5, 1.1]} rotation={[Math.PI / 2, 0, 0]} scale={[1, 1, 0.5]}>
+      <mesh
+        position={[0, 1.5, 1.1]}
+        rotation={[Math.PI / 2, 0, 0]}
+        scale={[1, 1, 0.5]}
+      >
         <coneGeometry args={[0.25, 0.5, 12]} />
         <meshStandardMaterial color={part.color2} roughness={0.4} />
       </mesh>
@@ -507,11 +655,22 @@ function Porthole({ part }: { part: PlacedPart }) {
     <group>
       <mesh rotation={[Math.PI / 2, 0, 0]}>
         <cylinderGeometry args={[r, r, 0.12, 20]} />
-        <meshPhysicalMaterial color={part.color} roughness={0.05} metalness={0.2} clearcoat={1} emissive={part.color2} emissiveIntensity={0.25} />
+        <meshPhysicalMaterial
+          color={part.color}
+          roughness={0.05}
+          metalness={0.2}
+          clearcoat={1}
+          emissive={part.color2}
+          emissiveIntensity={0.25}
+        />
       </mesh>
       <mesh position={[0, 0, 0.04]}>
         <torusGeometry args={[r, r * 0.16, 8, 24]} />
-        <meshStandardMaterial color="#9aa0a8" metalness={0.9} roughness={0.25} />
+        <meshStandardMaterial
+          color="#9aa0a8"
+          metalness={0.9}
+          roughness={0.25}
+        />
       </mesh>
     </group>
   );
@@ -545,9 +704,16 @@ function Propeller({ part }: { part: PlacedPart }) {
       </mesh>
       <group ref={rotor} position={[0, r * 0.5, 0]}>
         {[0, Math.PI / 2, Math.PI, (3 * Math.PI) / 2].map((a, i) => (
-          <mesh key={a} rotation={[0.25, a, 0]} position={[Math.cos(a) * r * 0.5, 0, -Math.sin(a) * r * 0.5]}>
+          <mesh
+            key={a}
+            rotation={[0.25, a, 0]}
+            position={[Math.cos(a) * r * 0.5, 0, -Math.sin(a) * r * 0.5]}
+          >
             <boxGeometry args={[r, 0.06 * r, 0.22 * r]} />
-            <meshStandardMaterial color={i % 2 ? part.color : "#ff3b30"} roughness={0.4} />
+            <meshStandardMaterial
+              color={i % 2 ? part.color : "#ff3b30"}
+              roughness={0.4}
+            />
           </mesh>
         ))}
         <mesh>

@@ -4,7 +4,13 @@ import { createBooster, createEngine, createStage } from "./defaults";
 import { makeId } from "./ids";
 import { LIMITS, SIZE_FACTOR } from "./limits";
 import { sanitizeRocket } from "./schema";
-import type { Booster, EngineSpec, RocketConfig, SizeClass, Stage } from "./types";
+import type {
+  Booster,
+  EngineSpec,
+  RocketConfig,
+  SizeClass,
+  Stage,
+} from "./types";
 
 /** Result of applying a batch of actions. */
 export interface ApplyResult {
@@ -13,7 +19,10 @@ export interface ApplyResult {
 }
 
 /** Applies validated actions in order and returns a new, sanitised configuration. */
-export function applyActions(config: RocketConfig, actions: RocketAction[]): ApplyResult {
+export function applyActions(
+  config: RocketConfig,
+  actions: RocketAction[],
+): ApplyResult {
   const notes: string[] = [];
   let next = structuredClone(config);
   for (const action of actions) {
@@ -28,41 +37,66 @@ function sizeFactor(size: SizeClass | undefined): number {
 }
 
 /** Builds a booster that suits the current core. */
-function templateBooster(config: RocketConfig, size: SizeClass | undefined, color: string | undefined): Booster {
+function templateBooster(
+  config: RocketConfig,
+  size: SizeClass | undefined,
+  color: string | undefined,
+): Booster {
   const reference = config.boosters[0];
   const core = config.stages[0];
   const f = sizeFactor(size);
-  const height = (reference && !size ? reference.height : core.height * 0.72) * (size ? Math.sqrt(f) : 1);
-  const radius = (reference && !size ? reference.radius : core.radius * 0.42) * f;
+  const height =
+    (reference && !size ? reference.height : core.height * 0.72) *
+    (size ? Math.sqrt(f) : 1);
+  const radius =
+    (reference && !size ? reference.radius : core.radius * 0.42) * f;
   return createBooster({
     height,
     radius,
     color: color ?? reference?.color ?? null,
     top: reference?.top ?? "cone",
-    engine: reference ? { ...reference.engine } : createEngine({ count: 1, size: Math.min(radius * 0.8, 2), power: 5 }),
+    engine: reference
+      ? { ...reference.engine }
+      : createEngine({ count: 1, size: Math.min(radius * 0.8, 2), power: 5 }),
   });
 }
 
 /** Adds boosters up to the hard limit, noting when the limit is hit. */
-function addBoosters(config: RocketConfig, count: number, size: SizeClass | undefined, color: string | undefined, notes: string[]): void {
+function addBoosters(
+  config: RocketConfig,
+  count: number,
+  size: SizeClass | undefined,
+  color: string | undefined,
+  notes: string[],
+): void {
   const room = LIMITS.boosters - config.boosters.length;
-  if (count > room) notes.push(`Booster mounting points exhausted at ${LIMITS.boosters}.`);
+  if (count > room)
+    notes.push(`Booster mounting points exhausted at ${LIMITS.boosters}.`);
   for (let i = 0; i < Math.min(count, room); i++) {
     config.boosters.push(templateBooster(config, size, color));
   }
 }
 
 /** Finds every engine spec addressed by an engine target. */
-function engineTargets(config: RocketConfig, target: string, id?: string): EngineSpec[] {
+function engineTargets(
+  config: RocketConfig,
+  target: string,
+  id?: string,
+): EngineSpec[] {
   switch (target) {
     case "core":
       return config.stages.slice(0, 1).map((s) => s.engine);
     case "boosters":
       return config.boosters.map((b) => b.engine);
     case "all":
-      return [...config.stages.map((s) => s.engine), ...config.boosters.map((b) => b.engine)];
+      return [
+        ...config.stages.map((s) => s.engine),
+        ...config.boosters.map((b) => b.engine),
+      ];
     default: {
-      const owner = [...config.stages, ...config.boosters].find((c) => c.id === id);
+      const owner = [...config.stages, ...config.boosters].find(
+        (c) => c.id === id,
+      );
       return owner ? [owner.engine] : [];
     }
   }
@@ -76,7 +110,11 @@ function scaleColumn(column: Stage | Booster, h: number, w: number): void {
 }
 
 /** Applies a single action. Unknown targets are ignored rather than failing the batch. */
-function applyAction(config: RocketConfig, action: RocketAction, notes: string[]): RocketConfig {
+function applyAction(
+  config: RocketConfig,
+  action: RocketAction,
+  notes: string[],
+): RocketConfig {
   switch (action.type) {
     case "rename":
       config.name = action.name.toUpperCase();
@@ -89,9 +127,13 @@ function applyAction(config: RocketConfig, action: RocketAction, notes: string[]
       break;
     case "remove_boosters":
       if (action.ids?.length) {
-        config.boosters = config.boosters.filter((b) => !action.ids!.includes(b.id));
+        const ids = action.ids;
+        config.boosters = config.boosters.filter((b) => !ids.includes(b.id));
       } else if (action.count !== undefined) {
-        config.boosters = config.boosters.slice(0, Math.max(0, config.boosters.length - action.count));
+        config.boosters = config.boosters.slice(
+          0,
+          Math.max(0, config.boosters.length - action.count),
+        );
       } else {
         config.boosters = [];
       }
@@ -99,24 +141,43 @@ function applyAction(config: RocketConfig, action: RocketAction, notes: string[]
     case "set_booster_count": {
       const target = Math.min(action.count, LIMITS.boosters);
       if (action.size) {
-        config.boosters = config.boosters.map((b) => ({ ...templateBooster(config, action.size, b.color ?? undefined), id: b.id }));
+        config.boosters = config.boosters.map((b) => ({
+          ...templateBooster(config, action.size, b.color ?? undefined),
+          id: b.id,
+        }));
       }
-      if (target < config.boosters.length) config.boosters = config.boosters.slice(0, target);
-      else addBoosters(config, target - config.boosters.length, action.size, undefined, notes);
+      if (target < config.boosters.length)
+        config.boosters = config.boosters.slice(0, target);
+      else
+        addBoosters(
+          config,
+          target - config.boosters.length,
+          action.size,
+          undefined,
+          notes,
+        );
       break;
     }
     case "scale": {
       const h = action.height ?? 1;
       const w = action.width ?? 1;
       const { target } = action;
-      if (target === "rocket" || target === "stages") config.stages.forEach((s) => scaleColumn(s, h, w));
-      if (target === "rocket" || target === "boosters") config.boosters.forEach((b) => scaleColumn(b, h, w));
-      if (target === "rocket" || target === "payload") config.payload.height *= h;
-      if (target === "engines") engineTargets(config, "all").forEach((e) => (e.size *= Math.max(h, w)));
-      if ((target === "rocket" || target === "fins") && config.fins) config.fins.size *= target === "rocket" ? Math.sqrt(w) : Math.max(h, w);
-      if (target === "decor") config.decorativeParts.forEach((d) => (d.size *= Math.max(h, w)));
+      if (target === "rocket" || target === "stages")
+        config.stages.forEach((s) => scaleColumn(s, h, w));
+      if (target === "rocket" || target === "boosters")
+        config.boosters.forEach((b) => scaleColumn(b, h, w));
+      if (target === "rocket" || target === "payload")
+        config.payload.height *= h;
+      if (target === "engines")
+        engineTargets(config, "all").forEach((e) => (e.size *= Math.max(h, w)));
+      if ((target === "rocket" || target === "fins") && config.fins)
+        config.fins.size *= target === "rocket" ? Math.sqrt(w) : Math.max(h, w);
+      if (target === "decor")
+        config.decorativeParts.forEach((d) => (d.size *= Math.max(h, w)));
       if (target === "id" && action.id) {
-        const column = [...config.stages, ...config.boosters].find((c) => c.id === action.id);
+        const column = [...config.stages, ...config.boosters].find(
+          (c) => c.id === action.id,
+        );
         if (column) scaleColumn(column, h, w);
         const decor = config.decorativeParts.find((d) => d.id === action.id);
         if (decor) decor.size *= Math.max(h, w);
@@ -137,7 +198,13 @@ function applyAction(config: RocketConfig, action: RocketAction, notes: string[]
           radius: action.radius ?? old.radius * 1.08,
           engine: { ...old.engine },
         });
-        old.engine = createEngine({ count: 1, size: old.engine.size, power: old.engine.power, style: old.engine.style, color: old.engine.color });
+        old.engine = createEngine({
+          count: 1,
+          size: old.engine.size,
+          power: old.engine.power,
+          style: old.engine.style,
+          color: old.engine.color,
+        });
         config.stages.unshift(stage);
       } else {
         const top = config.stages[config.stages.length - 1];
@@ -145,7 +212,11 @@ function applyAction(config: RocketConfig, action: RocketAction, notes: string[]
           createStage({
             height: action.height ?? top.height * 0.7,
             radius: action.radius ?? top.radius * (1 - top.taper),
-            engine: createEngine({ count: 1, size: Math.min(1.2, top.radius * 0.5), power: 4 }),
+            engine: createEngine({
+              count: 1,
+              size: Math.min(1.2, top.radius * 0.5),
+              power: 4,
+            }),
           }),
         );
       }
@@ -156,15 +227,19 @@ function applyAction(config: RocketConfig, action: RocketAction, notes: string[]
         notes.push("Kept the last stage. It is load-bearing.");
         break;
       }
-      if (action.id) config.stages = config.stages.filter((s) => s.id !== action.id);
-      else if (action.position === "bottom") config.stages = config.stages.slice(1);
+      if (action.id)
+        config.stages = config.stages.filter((s) => s.id !== action.id);
+      else if (action.position === "bottom")
+        config.stages = config.stages.slice(1);
       else config.stages = config.stages.slice(0, -1);
       break;
     }
     case "set_engines":
       engineTargets(config, action.target, action.id).forEach((engine) => {
         if (action.count !== undefined) engine.count = action.count;
-        if (action.size) engine.size = SIZE_FACTOR[action.size] * (action.target === "boosters" ? 0.8 : 1);
+        if (action.size)
+          engine.size =
+            SIZE_FACTOR[action.size] * (action.target === "boosters" ? 0.8 : 1);
         if (action.power !== undefined) engine.power = action.power;
         if (action.style) engine.style = action.style;
         if (action.color) engine.color = action.color;
@@ -188,14 +263,23 @@ function applyAction(config: RocketConfig, action: RocketAction, notes: string[]
       if (action.kind) {
         config.payload.kind = action.kind;
         if (action.crew === undefined) {
-          config.payload.crew = action.kind === "capsule" || action.kind === "habitat" ? Math.max(config.payload.crew, 2) : 0;
+          config.payload.crew =
+            action.kind === "capsule" || action.kind === "habitat"
+              ? Math.max(config.payload.crew, 2)
+              : 0;
         }
       }
       if (action.crew !== undefined) config.payload.crew = action.crew;
       if (action.size) config.payload.height = 5 * SIZE_FACTOR[action.size];
       break;
     case "set_fins": {
-      const fins = config.fins ?? { id: makeId("fin"), count: 4, size: 1.2, shape: "swept" as const, color: null };
+      const fins = config.fins ?? {
+        id: makeId("fin"),
+        count: 4,
+        size: 1.2,
+        shape: "swept" as const,
+        color: null,
+      };
       if (action.count !== undefined) fins.count = action.count;
       if (action.size) fins.size = 1.2 * SIZE_FACTOR[action.size];
       if (action.shape) fins.shape = action.shape;
@@ -218,7 +302,9 @@ function applyAction(config: RocketConfig, action: RocketAction, notes: string[]
       break;
     case "add_decor": {
       const attach = action.attach ?? defaultAttach(action.kind);
-      const existing = config.decorativeParts.find((d) => d.kind === action.kind && d.attach === attach);
+      const existing = config.decorativeParts.find(
+        (d) => d.kind === action.kind && d.attach === attach,
+      );
       if (existing) {
         existing.count += action.count ?? 1;
         if (action.color) existing.color = action.color;
@@ -237,7 +323,11 @@ function applyAction(config: RocketConfig, action: RocketAction, notes: string[]
     }
     case "remove_decor":
       config.decorativeParts = config.decorativeParts.filter((d) =>
-        action.id ? d.id !== action.id : action.kind ? d.kind !== action.kind : false,
+        action.id
+          ? d.id !== action.id
+          : action.kind
+            ? d.kind !== action.kind
+            : false,
       );
       break;
     case "set_tilt":
@@ -251,7 +341,9 @@ function applyAction(config: RocketConfig, action: RocketAction, notes: string[]
 }
 
 /** Picks where a decoration looks best when the AI did not say. */
-function defaultAttach(kind: RocketConfig["decorativeParts"][number]["kind"]): RocketConfig["decorativeParts"][number]["attach"] {
+function defaultAttach(
+  kind: RocketConfig["decorativeParts"][number]["kind"],
+): RocketConfig["decorativeParts"][number]["attach"] {
   switch (kind) {
     case "antenna":
     case "flag":
@@ -271,12 +363,21 @@ function defaultAttach(kind: RocketConfig["decorativeParts"][number]["kind"]): R
 }
 
 /** Applies a colour change to a named group of components. */
-function applyColor(config: RocketConfig, target: string, value: string | undefined, id?: string): void {
+function applyColor(
+  config: RocketConfig,
+  target: string,
+  value: string | undefined,
+  id?: string,
+): void {
   const a = config.appearance;
   if (target === "rainbow") {
     config.stages.forEach((s, i) => (s.color = RAINBOW[i % RAINBOW.length]));
-    config.boosters.forEach((b, i) => (b.color = RAINBOW[(i + 3) % RAINBOW.length]));
-    config.decorativeParts.forEach((d, i) => (d.color = RAINBOW[(i + 5) % RAINBOW.length]));
+    config.boosters.forEach(
+      (b, i) => (b.color = RAINBOW[(i + 3) % RAINBOW.length]),
+    );
+    config.decorativeParts.forEach(
+      (d, i) => (d.color = RAINBOW[(i + 5) % RAINBOW.length]),
+    );
     return;
   }
   if (!value) return;
@@ -321,7 +422,11 @@ function applyColor(config: RocketConfig, target: string, value: string | undefi
       config.decorativeParts.forEach((d) => (d.color = value));
       break;
     case "id": {
-      const item = [...config.stages, ...config.boosters, ...config.decorativeParts].find((c) => c.id === id);
+      const item = [
+        ...config.stages,
+        ...config.boosters,
+        ...config.decorativeParts,
+      ].find((c) => c.id === id);
       if (item) item.color = value;
       if (config.payload.id === id) config.payload.color = value;
       if (config.fins && config.fins.id === id) config.fins.color = value;
@@ -333,7 +438,8 @@ function applyColor(config: RocketConfig, target: string, value: string | undefi
 /** Removes any component by id. */
 function removePart(config: RocketConfig, id: string, notes: string[]): void {
   if (config.stages.some((s) => s.id === id)) {
-    if (config.stages.length > 1) config.stages = config.stages.filter((s) => s.id !== id);
+    if (config.stages.length > 1)
+      config.stages = config.stages.filter((s) => s.id !== id);
     else notes.push("Kept the last stage. It is load-bearing.");
   }
   config.boosters = config.boosters.filter((b) => b.id !== id);

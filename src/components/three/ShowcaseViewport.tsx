@@ -7,7 +7,15 @@ import type { RocketConfig } from "@/lib/rocket/types";
 import { Bay, BayCamera } from "./Bay";
 
 /** A self-contained bay view for share pages and share cards. */
-export function ShowcaseViewport({ rocket, capture = false, className = "" }: { rocket: RocketConfig; capture?: boolean; className?: string }) {
+export function ShowcaseViewport({
+  rocket,
+  capture = false,
+  className = "",
+}: {
+  rocket: RocketConfig;
+  capture?: boolean;
+  className?: string;
+}) {
   const layout = useMemo(() => layoutRocket(rocket), [rocket]);
   return (
     <Canvas

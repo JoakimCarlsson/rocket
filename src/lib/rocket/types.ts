@@ -5,10 +5,23 @@ export type SizeClass = "tiny" | "small" | "medium" | "large" | "huge";
 export type NozzleStyle = "bell" | "aerospike" | "flared" | "trumpet";
 
 /** Shape of the very top of the rocket. */
-export type TopKind = "cone" | "ogive" | "needle" | "blunt" | "dome" | "spike" | "none";
+export type TopKind =
+  | "cone"
+  | "ogive"
+  | "needle"
+  | "blunt"
+  | "dome"
+  | "spike"
+  | "none";
 
 /** What the rocket carries under its top. */
-export type PayloadKind = "capsule" | "fairing" | "satellite" | "cargo" | "habitat" | "none";
+export type PayloadKind =
+  | "capsule"
+  | "fairing"
+  | "satellite"
+  | "cargo"
+  | "habitat"
+  | "none";
 
 /** Surface material style applied across the vehicle. */
 export type Finish = "matte" | "satin" | "metallic" | "chrome" | "glossy";

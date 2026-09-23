@@ -24,13 +24,24 @@ function fill(key: keyof SimulatedStats, value: number): number {
 
 /** Bar colour for a stat. */
 function barColor(key: keyof SimulatedStats, value: number): string {
-  if (key === "reliability") return value > 70 ? "var(--good)" : value > 40 ? "var(--warn)" : "var(--bad)";
+  if (key === "reliability")
+    return value > 70
+      ? "var(--good)"
+      : value > 40
+        ? "var(--warn)"
+        : "var(--bad)";
   if (key === "chaos") return value > 70 ? "var(--bad)" : "var(--accent)";
   return "rgba(236,235,231,0.55)";
 }
 
 /** Right-hand panel of fictional stats with joke readouts. */
-export function StatsPanel({ rocket, provider }: { rocket: RocketConfig; provider: string }) {
+export function StatsPanel({
+  rocket,
+  provider,
+}: {
+  rocket: RocketConfig;
+  provider: string;
+}) {
   const stats = useMemo(() => computeStats(rocket), [rocket]);
   const jokes = useMemo(() => jokeMeters(stats), [stats]);
   return (
@@ -45,16 +56,23 @@ export function StatsPanel({ rocket, provider }: { rocket: RocketConfig; provide
           return (
             <li key={meta.key}>
               <div className="flex items-baseline justify-between font-mono text-[11px]">
-                <span className="tracking-[0.14em] text-muted">{meta.label}</span>
+                <span className="tracking-[0.14em] text-muted">
+                  {meta.label}
+                </span>
                 <span className="text-[13px] text-text">
                   <AnimatedNumber value={value} format={meta.format} />
-                  <span className="ml-1 text-[10px] text-faint">{meta.unit}</span>
+                  <span className="ml-1 text-[10px] text-faint">
+                    {meta.unit}
+                  </span>
                 </span>
               </div>
               <div className="mt-1 h-[3px] overflow-hidden rounded-full bg-white/5">
                 <motion.div
                   className="h-full rounded-full"
-                  animate={{ width: `${Math.max(2, fill(meta.key, value) * 100)}%`, backgroundColor: barColor(meta.key, value) }}
+                  animate={{
+                    width: `${Math.max(2, fill(meta.key, value) * 100)}%`,
+                    backgroundColor: barColor(meta.key, value),
+                  }}
                   transition={{ type: "spring", stiffness: 120, damping: 20 }}
                 />
               </div>
@@ -64,9 +82,17 @@ export function StatsPanel({ rocket, provider }: { rocket: RocketConfig; provide
       </ul>
       <div className="mt-4 space-y-1.5 border-t border-line pt-3">
         {jokes.map((joke) => (
-          <div key={joke.label} className="flex justify-between gap-2 font-mono text-[9.5px] tracking-[0.12em]">
+          <div
+            key={joke.label}
+            className="flex justify-between gap-2 font-mono text-[9.5px] tracking-[0.12em]"
+          >
             <span className="text-faint">{joke.label}</span>
-            <motion.span key={joke.value} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} className="text-right text-accent-soft">
+            <motion.span
+              key={joke.value}
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="text-right text-accent-soft"
+            >
               {joke.value}
             </motion.span>
           </div>
@@ -84,12 +110,21 @@ export function StatsPanel({ rocket, provider }: { rocket: RocketConfig; provide
 export function CompactStats({ rocket }: { rocket: RocketConfig }) {
   const stats = useMemo(() => computeStats(rocket), [rocket]);
   const [open, setOpen] = useState(false);
-  const shown = open ? STAT_META : STAT_META.filter((m) => ["height", "thrust", "reliability", "chaos"].includes(m.key));
+  const shown = open
+    ? STAT_META
+    : STAT_META.filter((m) =>
+        ["height", "thrust", "reliability", "chaos"].includes(m.key),
+      );
   return (
-    <button onClick={() => setOpen((o) => !o)} className="panel pointer-events-auto grid w-full grid-cols-4 gap-x-2 gap-y-2 rounded-xl px-3 py-2 text-left">
+    <button
+      onClick={() => setOpen((o) => !o)}
+      className="panel pointer-events-auto grid w-full grid-cols-4 gap-x-2 gap-y-2 rounded-xl px-3 py-2 text-left"
+    >
       {shown.map((meta) => (
         <div key={meta.key} className="min-w-0">
-          <div className="truncate font-mono text-[8.5px] tracking-[0.12em] text-muted">{meta.label}</div>
+          <div className="truncate font-mono text-[8.5px] tracking-[0.12em] text-muted">
+            {meta.label}
+          </div>
           <div className="font-mono text-[12px]">
             <AnimatedNumber value={stats[meta.key]} format={meta.format} />
             <span className="ml-0.5 text-[8px] text-faint">{meta.unit}</span>

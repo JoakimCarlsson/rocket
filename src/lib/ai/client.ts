@@ -1,7 +1,7 @@
 import type { AIResult } from "./actions";
 import { LocalProvider } from "./local-provider";
 import type { AIProvider, InterpretRequest } from "./provider";
-import { RemoteProvider, fetchProviderStatus } from "./remote-provider";
+import { fetchProviderStatus, RemoteProvider } from "./remote-provider";
 
 /**
  * Provider used by the UI: prefers the hosted model when the server has one configured
@@ -21,7 +21,8 @@ export class AutoProvider implements AIProvider {
   /** Resolves the server status once and remembers it. */
   detect(): Promise<void> {
     this.status ??= fetchProviderStatus().then((status) => {
-      if (status.available) this.remote = new RemoteProvider(status.id, status.label);
+      if (status.available)
+        this.remote = new RemoteProvider(status.id, status.label);
     });
     return this.status;
   }
@@ -35,14 +36,23 @@ export class AutoProvider implements AIProvider {
     if (this.remote) {
       try {
         const result = await this.remote.interpret(request);
-        if (result.actions.length > 0 || result.response) return { ...result, provider: this.remote.label };
-        console.warn("Hosted model returned nothing usable; using the local engineer.");
+        if (result.actions.length > 0 || result.response)
+          return { ...result, provider: this.remote.label };
+        console.warn(
+          "Hosted model returned nothing usable; using the local engineer.",
+        );
       } catch (error) {
         console.warn("Hosted model failed; using the local engineer.", error);
       }
-      return { ...(await this.local.interpret(request)), provider: `${this.local.label} (FALLBACK)` };
+      return {
+        ...(await this.local.interpret(request)),
+        provider: `${this.local.label} (FALLBACK)`,
+      };
     }
-    return { ...(await this.local.interpret(request)), provider: this.local.label };
+    return {
+      ...(await this.local.interpret(request)),
+      provider: this.local.label,
+    };
   }
 }
 

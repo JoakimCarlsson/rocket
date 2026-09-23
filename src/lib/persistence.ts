@@ -39,14 +39,24 @@ export interface SavedSession {
 
 /** Loads the last builder session, validating the rocket. */
 export function loadSession(): SavedSession | null {
-  const data = read<{ rocket: unknown; messages: SavedSession["messages"] }>(local, KEYS.session);
+  const data = read<{ rocket: unknown; messages: SavedSession["messages"] }>(
+    local,
+    KEYS.session,
+  );
   const rocket = data ? parseRocket(data.rocket) : null;
-  return rocket ? { rocket, messages: Array.isArray(data!.messages) ? data!.messages.slice(-40) : [] } : null;
+  if (!data || !rocket) return null;
+  return {
+    rocket,
+    messages: Array.isArray(data.messages) ? data.messages.slice(-40) : [],
+  };
 }
 
 /** Saves the builder session. */
 export function saveSession(value: SavedSession): void {
-  write(local, KEYS.session, { rocket: value.rocket, messages: value.messages.slice(-40) });
+  write(local, KEYS.session, {
+    rocket: value.rocket,
+    messages: value.messages.slice(-40),
+  });
 }
 
 /** Loads unlocked achievement ids. */
@@ -83,14 +93,22 @@ export function handOff(value: IncomingRocket): void {
 
 /** Takes (and clears) a queued rocket, if any. */
 export function takeHandOff(): IncomingRocket | null {
-  const data = read<{ rocket: unknown; prompt: string; source: string }>(session, KEYS.incoming);
+  const data = read<{ rocket: unknown; prompt: string; source: string }>(
+    session,
+    KEYS.incoming,
+  );
   try {
     window.sessionStorage.removeItem(KEYS.incoming);
   } catch {
     /* storage unavailable */
   }
   const rocket = data ? parseRocket(data.rocket) : null;
-  return rocket ? { rocket, prompt: String(data!.prompt ?? ""), source: String(data!.source ?? "") } : null;
+  if (!data || !rocket) return null;
+  return {
+    rocket,
+    prompt: String(data.prompt ?? ""),
+    source: String(data.source ?? ""),
+  };
 }
 
 /** Loads the mute preference. */

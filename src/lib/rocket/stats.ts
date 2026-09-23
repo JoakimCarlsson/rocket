@@ -1,4 +1,10 @@
-import type { EngineSpec, RocketConfig, SimulatedStats, Stage, TopKind } from "./types";
+import type {
+  EngineSpec,
+  RocketConfig,
+  SimulatedStats,
+  Stage,
+  TopKind,
+} from "./types";
 
 const TOP_HEIGHT_FACTOR: Record<TopKind, number> = {
   cone: 1.7,
@@ -25,7 +31,11 @@ export function upperRadius(config: RocketConfig): number {
 
 /** Returns the height of the adapter section joining two stacked stages. */
 export function interstageHeight(lower: Stage, upper: Stage): number {
-  return 1.2 + Math.abs(lower.radius * (1 - lower.taper) - upper.radius) * 0.9 + upper.engine.size * 0.6;
+  return (
+    1.2 +
+    Math.abs(lower.radius * (1 - lower.taper) - upper.radius) * 0.9 +
+    upper.engine.size * 0.6
+  );
 }
 
 /** Returns the rendered height of the payload section. */
@@ -36,10 +46,17 @@ export function payloadHeight(config: RocketConfig): number {
 /** Returns the full stack height in game metres. */
 export function totalHeight(config: RocketConfig): number {
   const stages = config.stages.reduce(
-    (sum, stage, index) => sum + stage.height + (index > 0 ? interstageHeight(config.stages[index - 1], stage) : 0),
+    (sum, stage, index) =>
+      sum +
+      stage.height +
+      (index > 0 ? interstageHeight(config.stages[index - 1], stage) : 0),
     0,
   );
-  return stages + payloadHeight(config) + topHeight(config.payload.top, upperRadius(config));
+  return (
+    stages +
+    payloadHeight(config) +
+    topHeight(config.payload.top, upperRadius(config))
+  );
 }
 
 /** Returns the widest horizontal extent of the vehicle, boosters included. */
@@ -81,29 +98,63 @@ export function decorCount(config: RocketConfig): number {
  */
 export function computeStats(config: RocketConfig): SimulatedStats {
   const height = totalHeight(config);
-  const coreMass = config.stages.reduce((sum, s) => sum + Math.PI * s.radius * s.radius * Math.pow(s.height, 0.7) * 1.6, 0);
-  const boosterMass = config.boosters.reduce((sum, b) => sum + Math.PI * b.radius * b.radius * Math.pow(b.height, 0.7) * 1.6, 0);
-  const extraMass = config.payload.height * 12 + decorCount(config) * 3 + (config.legs ? 20 : 0);
+  const coreMass = config.stages.reduce(
+    (sum, s) => sum + Math.PI * s.radius * s.radius * s.height ** 0.7 * 1.6,
+    0,
+  );
+  const boosterMass = config.boosters.reduce(
+    (sum, b) => sum + Math.PI * b.radius * b.radius * b.height ** 0.7 * 1.6,
+    0,
+  );
+  const extraMass =
+    config.payload.height * 12 +
+    decorCount(config) * 3 +
+    (config.legs ? 20 : 0);
   const mass = coreMass + boosterMass + extraMass;
 
   const liftoffThrust =
-    clusterThrust(config.stages[0]?.engine ?? { count: 0, size: 0, power: 0, style: "bell", color: "" }) +
-    config.boosters.reduce((sum, b) => sum + clusterThrust(b.engine), 0);
+    clusterThrust(
+      config.stages[0]?.engine ?? {
+        count: 0,
+        size: 0,
+        power: 0,
+        style: "bell",
+        color: "",
+      },
+    ) + config.boosters.reduce((sum, b) => sum + clusterThrust(b.engine), 0);
   const twr = liftoffThrust / Math.max(1, mass * 9.8);
 
   const stageCount = config.stages.length;
-  const range = 150 * Math.pow(Math.min(twr, 6), 1.6) * Math.pow(6, stageCount) * (config.tilt ? 0.6 : 1);
+  const range =
+    150 * Math.min(twr, 6) ** 1.6 * 6 ** stageCount * (config.tilt ? 0.6 : 1);
 
   const parts =
-    stageCount + config.boosters.length + (config.fins ? 1 : 0) + (config.legs ? 1 : 0) + config.decorativeParts.length;
-  const finishCost = { matte: 1, satin: 1.1, metallic: 1.25, chrome: 1.8, glossy: 1.15 }[config.appearance.finish];
-  const cost = (parts * 14 + mass * 0.015 + engineCount(config) * 6 + config.payload.crew * 9) * finishCost;
+    stageCount +
+    config.boosters.length +
+    (config.fins ? 1 : 0) +
+    (config.legs ? 1 : 0) +
+    config.decorativeParts.length;
+  const finishCost = {
+    matte: 1,
+    satin: 1.1,
+    metallic: 1.25,
+    chrome: 1.8,
+    glossy: 1.15,
+  }[config.appearance.finish];
+  const cost =
+    (parts * 14 +
+      mass * 0.015 +
+      engineCount(config) * 6 +
+      config.payload.crew * 9) *
+    finishCost;
 
   const boosters = config.boosters.length;
   const engines = engineCount(config);
   const power = peakPower(config);
   const decor = decorCount(config);
-  const sillyDecor = config.decorativeParts.filter((p) => SILLY_DECOR.has(p.kind)).length;
+  const sillyDecor = config.decorativeParts.filter((p) =>
+    SILLY_DECOR.has(p.kind),
+  ).length;
   const slenderness = height / Math.max(1, totalWidth(config));
   const tiltPenalty = Math.abs(config.tilt) / 2.5;
 
@@ -147,7 +198,9 @@ export function thrustToWeight(stats: SimulatedStats): number {
 }
 
 /** Tongue-in-cheek readouts shown under the stats. These are jokes, not assessments. */
-export function jokeMeters(stats: SimulatedStats): { label: string; value: string }[] {
+export function jokeMeters(
+  stats: SimulatedStats,
+): { label: string; value: string }[] {
   const confidence =
     stats.reliability > 85
       ? "SMUG"
@@ -168,7 +221,13 @@ export function jokeMeters(stats: SimulatedStats): { label: string; value: strin
           : stats.chaos < 85
             ? "PENDING FOREVER"
             : "THEY STOPPED ANSWERING";
-  const commonSense = Math.max(0, Math.min(100, Math.round(100 - stats.chaos * 0.95 - (100 - stats.reliability) * 0.2)));
+  const commonSense = Math.max(
+    0,
+    Math.min(
+      100,
+      Math.round(100 - stats.chaos * 0.95 - (100 - stats.reliability) * 0.2),
+    ),
+  );
   return [
     { label: "ENGINEER CONFIDENCE", value: confidence },
     { label: "REGULATORY APPROVAL", value: regulatory },

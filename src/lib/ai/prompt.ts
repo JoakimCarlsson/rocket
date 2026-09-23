@@ -51,10 +51,20 @@ export function describeRocket(rocket: RocketConfig): string {
       id: s.id,
       height: +s.height.toFixed(1),
       radius: +s.radius.toFixed(2),
-      engines: { count: s.engine.count, size: +s.engine.size.toFixed(2), power: +s.engine.power.toFixed(1), style: s.engine.style },
+      engines: {
+        count: s.engine.count,
+        size: +s.engine.size.toFixed(2),
+        power: +s.engine.power.toFixed(1),
+        style: s.engine.style,
+      },
       color: s.color,
     })),
-    boosters: rocket.boosters.map((b) => ({ id: b.id, height: +b.height.toFixed(1), radius: +b.radius.toFixed(2), color: b.color })),
+    boosters: rocket.boosters.map((b) => ({
+      id: b.id,
+      height: +b.height.toFixed(1),
+      radius: +b.radius.toFixed(2),
+      color: b.color,
+    })),
     payload: rocket.payload,
     fins: rocket.fins,
     legs: rocket.legs,
@@ -74,7 +84,9 @@ export function buildUserMessage(request: InterpretRequest): string {
     `MODE: ${request.mode}`,
     `CURRENT ROCKET: ${describeRocket(request.rocket)}`,
     history ? `RECENT CHANGES:\n${history}` : "",
-    request.mission ? `FICTIONAL MISSION RESULT: ${JSON.stringify(request.mission)}` : "",
+    request.mission
+      ? `FICTIONAL MISSION RESULT: ${JSON.stringify(request.mission)}`
+      : "",
     `PLAYER INSTRUCTION: ${request.instruction.slice(0, 500)}`,
   ];
   return parts.filter(Boolean).join("\n\n");

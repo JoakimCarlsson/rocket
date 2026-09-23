@@ -34,12 +34,19 @@ export class ParticleField {
   private readonly point = new THREE.Vector3();
 
   /** Creates a pool drawing `capacity` instances of the geometry with the material. */
-  constructor(capacity: number, geometry: THREE.BufferGeometry, material: THREE.Material) {
+  constructor(
+    capacity: number,
+    geometry: THREE.BufferGeometry,
+    material: THREE.Material,
+  ) {
     this.capacity = capacity;
     this.mesh = new THREE.InstancedMesh(geometry, material, capacity);
     this.mesh.frustumCulled = false;
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(capacity * 3), 3);
+    this.mesh.instanceColor = new THREE.InstancedBufferAttribute(
+      new Float32Array(capacity * 3),
+      3,
+    );
     this.position = new Float32Array(capacity * 3);
     this.velocity = new Float32Array(capacity * 3);
     this.age = new Float32Array(capacity).fill(1);
@@ -56,8 +63,14 @@ export class ParticleField {
   spawn(options: SpawnOptions): void {
     const i = this.cursor;
     this.cursor = (this.cursor + 1) % this.capacity;
-    this.position.set([options.position.x, options.position.y, options.position.z], i * 3);
-    this.velocity.set([options.velocity.x, options.velocity.y, options.velocity.z], i * 3);
+    this.position.set(
+      [options.position.x, options.position.y, options.position.z],
+      i * 3,
+    );
+    this.velocity.set(
+      [options.velocity.x, options.velocity.y, options.velocity.z],
+      i * 3,
+    );
     this.from.set([options.from.r, options.from.g, options.from.b], i * 3);
     this.to.set([options.to.r, options.to.g, options.to.b], i * 3);
     this.age[i] = 0;
@@ -88,8 +101,15 @@ export class ParticleField {
         this.velocity[o + 2] += (this.velocity[o + 2] / len) * spread;
         this.velocity[o + 1] = Math.abs(this.velocity[o + 1]) * 0.15;
       }
-      const s = t >= 1 ? 0 : (this.size[i] + this.growth[i] * t) * (t > 0.8 ? (1 - t) / 0.2 : 1);
-      this.point.set(this.position[o], this.position[o + 1], this.position[o + 2]);
+      const s =
+        t >= 1
+          ? 0
+          : (this.size[i] + this.growth[i] * t) * (t > 0.8 ? (1 - t) / 0.2 : 1);
+      this.point.set(
+        this.position[o],
+        this.position[o + 1],
+        this.position[o + 2],
+      );
       this.scale.setScalar(Math.max(0, s));
       this.matrix.compose(this.point, this.quaternion, this.scale);
       this.mesh.setMatrixAt(i, this.matrix);

@@ -39,6 +39,9 @@ export function clamp(value: number, range: readonly [number, number]): number {
 }
 
 /** Clamps and rounds a number to an integer in range. */
-export function clampInt(value: number, range: readonly [number, number]): number {
+export function clampInt(
+  value: number,
+  range: readonly [number, number],
+): number {
   return Math.round(clamp(value, range));
 }

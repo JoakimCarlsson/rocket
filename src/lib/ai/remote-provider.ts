@@ -1,4 +1,4 @@
-import { validateModelOutput, type AIResult } from "./actions";
+import { type AIResult, validateModelOutput } from "./actions";
 import type { AIProvider, InterpretRequest } from "./provider";
 
 /** Thrown when the server has no model configured or the call failed. */
@@ -22,7 +22,10 @@ export class RemoteProvider implements AIProvider {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(request),
     });
-    if (!response.ok) throw new ProviderUnavailableError(`AI route returned ${response.status}`);
+    if (!response.ok)
+      throw new ProviderUnavailableError(
+        `AI route returned ${response.status}`,
+      );
     return validateModelOutput(await response.json(), this.id);
   }
 }

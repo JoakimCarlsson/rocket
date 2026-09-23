@@ -1,5 +1,12 @@
 import { makeId } from "./ids";
-import { createRng, pick, randInt, randRange, chance, type Rng } from "./random";
+import {
+  chance,
+  createRng,
+  pick,
+  type Rng,
+  randInt,
+  randRange,
+} from "./random";
 import type {
   Booster,
   DecorKind,
@@ -20,11 +27,21 @@ export const DEFAULT_NAME = "UNTITLED VEHICLE";
 
 /** Builds an engine spec with sensible defaults. */
 export function createEngine(overrides: Partial<EngineSpec> = {}): EngineSpec {
-  return { count: 1, size: 1, power: 5, style: "bell", color: "#2a2d33", ...overrides };
+  return {
+    count: 1,
+    size: 1,
+    power: 5,
+    style: "bell",
+    color: "#2a2d33",
+    ...overrides,
+  };
 }
 
 /** Builds a core stage with sensible defaults. */
-export function createStage(overrides: Partial<Stage> = {}, rng: Rng = Math.random): Stage {
+export function createStage(
+  overrides: Partial<Stage> = {},
+  rng: Rng = Math.random,
+): Stage {
   return {
     id: makeId("stg", rng),
     height: 20,
@@ -37,7 +54,10 @@ export function createStage(overrides: Partial<Stage> = {}, rng: Rng = Math.rand
 }
 
 /** Builds a side booster with sensible defaults. */
-export function createBooster(overrides: Partial<Booster> = {}, rng: Rng = Math.random): Booster {
+export function createBooster(
+  overrides: Partial<Booster> = {},
+  rng: Rng = Math.random,
+): Booster {
   return {
     id: makeId("bst", rng),
     height: 18,
@@ -60,15 +80,27 @@ export function createStarterRocket(): RocketConfig {
     tilt: 0,
     stages: [
       createStage(
-        { height: 30, radius: 2.4, engine: createEngine({ count: 5, size: 0.9, power: 5 }) },
+        {
+          height: 30,
+          radius: 2.4,
+          engine: createEngine({ count: 5, size: 0.9, power: 5 }),
+        },
         rng,
       ),
       createStage(
-        { height: 14, radius: 2.4, taper: 0.12, engine: createEngine({ count: 1, size: 1.1, power: 4 }) },
+        {
+          height: 14,
+          radius: 2.4,
+          taper: 0.12,
+          engine: createEngine({ count: 1, size: 1.1, power: 4 }),
+        },
         rng,
       ),
     ],
-    boosters: [createBooster({ height: 22, radius: 1.1 }, rng), createBooster({ height: 22, radius: 1.1 }, rng)],
+    boosters: [
+      createBooster({ height: 22, radius: 1.1 }, rng),
+      createBooster({ height: 22, radius: 1.1 }, rng),
+    ],
     payload: {
       id: makeId("pld", rng),
       kind: "capsule",
@@ -78,10 +110,23 @@ export function createStarterRocket(): RocketConfig {
       top: "ogive",
       topColor: null,
     },
-    fins: { id: makeId("fin", rng), count: 4, size: 1.2, shape: "swept", color: null },
+    fins: {
+      id: makeId("fin", rng),
+      count: 4,
+      size: 1.2,
+      shape: "swept",
+      color: null,
+    },
     legs: null,
     decorativeParts: [
-      { id: makeId("dec", rng), kind: "windows", attach: "payload", count: 3, size: 1, color: null },
+      {
+        id: makeId("dec", rng),
+        kind: "windows",
+        attach: "payload",
+        count: 3,
+        size: 1,
+        color: null,
+      },
     ],
     appearance: {
       primary: "#e9e7e2",
@@ -108,10 +153,25 @@ const PALETTES: [string, string, string][] = [
 const FINISHES: Finish[] = ["matte", "satin", "metallic", "chrome", "glossy"];
 const PATTERNS: Pattern[] = ["solid", "stripes", "bands", "checker", "split"];
 const TOPS: TopKind[] = ["cone", "ogive", "needle", "blunt", "dome", "spike"];
-const PAYLOADS: PayloadKind[] = ["capsule", "fairing", "satellite", "cargo", "habitat"];
+const PAYLOADS: PayloadKind[] = [
+  "capsule",
+  "fairing",
+  "satellite",
+  "cargo",
+  "habitat",
+];
 const NOZZLES: NozzleStyle[] = ["bell", "aerospike", "flared", "trumpet"];
 const FINS: FinShape[] = ["delta", "swept", "grid", "tiny", "shark"];
-const DECOR: DecorKind[] = ["antenna", "ring", "solarPanels", "spikes", "lights", "wings", "flag", "windows"];
+const DECOR: DecorKind[] = [
+  "antenna",
+  "ring",
+  "solarPanels",
+  "spikes",
+  "lights",
+  "wings",
+  "flag",
+  "windows",
+];
 
 /** Builds a fully random but always valid rocket from a seed. */
 export function createRandomRocket(seed: number): RocketConfig {
@@ -141,24 +201,27 @@ export function createRandomRocket(seed: number): RocketConfig {
   const boosterCount = pick(rng, [0, 0, 2, 2, 3, 4, 6]);
   const boosterHeight = stages[0].height * randRange(rng, 0.6, 0.95);
   const boosters = Array.from({ length: boosterCount }, () =>
-      createBooster(
-        {
-          height: boosterHeight,
-          radius: baseRadius * randRange(rng, 0.3, 0.5),
-          top: pick(rng, ["cone", "ogive", "blunt"] as const),
-        },
-        rng,
-      ),
+    createBooster(
+      {
+        height: boosterHeight,
+        radius: baseRadius * randRange(rng, 0.3, 0.5),
+        top: pick(rng, ["cone", "ogive", "blunt"] as const),
+      },
+      rng,
+    ),
   );
   const decorCount = randInt(rng, 0, 3);
-  const decorativeParts: DecorPart[] = Array.from({ length: decorCount }, () => ({
-    id: makeId("dec", rng),
-    kind: pick(rng, DECOR),
-    attach: pick(rng, ["top", "payload", "core", "bottom"] as const),
-    count: randInt(rng, 1, 4),
-    size: randRange(rng, 0.7, 1.4),
-    color: null,
-  }));
+  const decorativeParts: DecorPart[] = Array.from(
+    { length: decorCount },
+    () => ({
+      id: makeId("dec", rng),
+      kind: pick(rng, DECOR),
+      attach: pick(rng, ["top", "payload", "core", "bottom"] as const),
+      count: randInt(rng, 1, 4),
+      size: randRange(rng, 0.7, 1.4),
+      color: null,
+    }),
+  );
   const payloadKind = pick(rng, PAYLOADS);
   return {
     version: 1,
@@ -172,15 +235,26 @@ export function createRandomRocket(seed: number): RocketConfig {
       id: makeId("pld", rng),
       kind: payloadKind,
       height: randRange(rng, 4, 9),
-      crew: payloadKind === "capsule" || payloadKind === "habitat" ? randInt(rng, 1, 6) : 0,
+      crew:
+        payloadKind === "capsule" || payloadKind === "habitat"
+          ? randInt(rng, 1, 6)
+          : 0,
       color: null,
       top: pick(rng, TOPS),
       topColor: null,
     },
     fins: chance(rng, 0.7)
-      ? { id: makeId("fin", rng), count: pick(rng, [3, 4, 4, 6]), size: randRange(rng, 0.8, 1.8), shape: pick(rng, FINS), color: null }
+      ? {
+          id: makeId("fin", rng),
+          count: pick(rng, [3, 4, 4, 6]),
+          size: randRange(rng, 0.8, 1.8),
+          shape: pick(rng, FINS),
+          color: null,
+        }
       : null,
-    legs: chance(rng, 0.3) ? { id: makeId("leg", rng), count: 4, size: 1 } : null,
+    legs: chance(rng, 0.3)
+      ? { id: makeId("leg", rng), count: 4, size: 1 }
+      : null,
     decorativeParts,
     appearance: {
       primary,

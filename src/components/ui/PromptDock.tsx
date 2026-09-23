@@ -4,7 +4,13 @@ import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "./Icon";
 
-const FIRST_SUGGESTIONS = ["Build a Mars rocket", "Add way too many boosters", "Make the cheapest rocket possible", "Make it enormous", "Surprise me"];
+const FIRST_SUGGESTIONS = [
+  "Build a Mars rocket",
+  "Add way too many boosters",
+  "Make the cheapest rocket possible",
+  "Make it enormous",
+  "Surprise me",
+];
 const FOLLOW_UPS = [
   "Make it twice as stupid",
   "Put a glass observation dome on top",
@@ -23,9 +29,11 @@ const FOLLOW_UPS = [
 function Typewriter({ text }: { text: string }) {
   const [count, setCount] = useState(0);
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCount(0);
-    const timer = setInterval(() => setCount((c) => (c >= text.length ? c : c + 2)), 16);
+    const timer = setInterval(
+      () => setCount((c) => (c >= text.length ? c : c + 2)),
+      16,
+    );
     return () => clearInterval(timer);
   }, [text]);
   return (
@@ -51,9 +59,22 @@ export interface PromptDockProps {
 }
 
 /** Bottom-centre prompt: the main way to build. */
-export function PromptDock({ busy, firstTime, engineerLine, canUndo, compact, focusSignal, onSubmit, onUndo, onRandomize, onLaunch }: PromptDockProps) {
+export function PromptDock({
+  busy,
+  firstTime,
+  engineerLine,
+  canUndo,
+  compact,
+  focusSignal,
+  onSubmit,
+  onUndo,
+  onRandomize,
+  onLaunch,
+}: PromptDockProps) {
   const [value, setValue] = useState("");
-  const [followUps, setFollowUps] = useState<string[]>(() => FOLLOW_UPS.slice(0, 4));
+  const [followUps, setFollowUps] = useState<string[]>(() =>
+    FOLLOW_UPS.slice(0, 4),
+  );
   const input = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -62,8 +83,11 @@ export function PromptDock({ busy, firstTime, engineerLine, canUndo, compact, fo
 
   useEffect(() => {
     if (!busy) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setFollowUps([...FOLLOW_UPS].sort(() => Math.random() - 0.5).slice(0, compact ? 3 : 4));
+      setFollowUps(
+        [...FOLLOW_UPS]
+          .sort(() => Math.random() - 0.5)
+          .slice(0, compact ? 3 : 4),
+      );
     }
   }, [busy, compact, engineerLine]);
 
@@ -86,17 +110,30 @@ export function PromptDock({ busy, firstTime, engineerLine, canUndo, compact, fo
             className="mb-3 flex items-start gap-2.5 px-1"
           >
             <span className="mt-[3px] grid h-5 w-5 shrink-0 place-items-center rounded-full border border-accent/50 bg-accent/10">
-              <span className={`h-1.5 w-1.5 rounded-full bg-accent ${busy ? "animate-ping" : ""}`} />
+              <span
+                className={`h-1.5 w-1.5 rounded-full bg-accent ${busy ? "animate-ping" : ""}`}
+              />
             </span>
             <p className="font-mono text-[12.5px] leading-relaxed text-text/90 [text-shadow:0_1px_12px_rgba(0,0,0,0.9)]">
-              {busy ? <span className="text-muted">Engineer is thinking<span className="caret">…</span></span> : <Typewriter text={engineerLine!} />}
+              {busy ? (
+                <span className="text-muted">
+                  Engineer is thinking<span className="caret">…</span>
+                </span>
+              ) : (
+                <Typewriter text={engineerLine ?? ""} />
+              )}
             </p>
           </motion.div>
         )}
       </AnimatePresence>
 
       {firstTime && !busy && (
-        <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6 }} className="mb-2 px-1 font-display text-[15px] font-medium tracking-tight text-text/90">
+        <motion.p
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.6 }}
+          className="mb-2 px-1 font-display text-[15px] font-medium tracking-tight text-text/90"
+        >
           Describe your rocket.
         </motion.p>
       )}
@@ -144,11 +181,19 @@ export function PromptDock({ busy, firstTime, engineerLine, canUndo, compact, fo
       </div>
 
       <div className="mt-2.5 flex items-center gap-2">
-        <button onClick={onUndo} disabled={!canUndo || busy} className="flex h-12 items-center gap-2 rounded-xl border border-line px-3.5 font-mono text-[10.5px] tracking-[0.16em] text-muted transition hover:border-line-strong hover:text-text disabled:opacity-30">
+        <button
+          onClick={onUndo}
+          disabled={!canUndo || busy}
+          className="flex h-12 items-center gap-2 rounded-xl border border-line px-3.5 font-mono text-[10.5px] tracking-[0.16em] text-muted transition hover:border-line-strong hover:text-text disabled:opacity-30"
+        >
           <Icon name="undo" size={14} />
           {!compact && "UNDO"}
         </button>
-        <button onClick={onRandomize} disabled={busy} className="flex h-12 items-center gap-2 rounded-xl border border-line px-3.5 font-mono text-[10.5px] tracking-[0.16em] text-muted transition hover:border-line-strong hover:text-text disabled:opacity-30">
+        <button
+          onClick={onRandomize}
+          disabled={busy}
+          className="flex h-12 items-center gap-2 rounded-xl border border-line px-3.5 font-mono text-[10.5px] tracking-[0.16em] text-muted transition hover:border-line-strong hover:text-text disabled:opacity-30"
+        >
           <Icon name="dice" size={14} />
           {!compact && "RANDOMIZE"}
         </button>

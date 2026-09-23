@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { resolveColor } from "./colors";
 import { createStarterRocket } from "./defaults";
-import { LIMITS, clamp, clampInt } from "./limits";
+import { clamp, clampInt, LIMITS } from "./limits";
 import type { RocketConfig } from "./types";
 
 const color = z.string().transform((value, ctx) => {
@@ -31,7 +31,16 @@ export const rocketSchema = z.object({
   destination: z.enum(["orbit", "moon", "mars", "sun", "nowhere"]),
   tilt: z.number(),
   stages: z
-    .array(z.object({ id, height: z.number(), radius: z.number(), taper: z.number(), color: color.nullable(), engine }))
+    .array(
+      z.object({
+        id,
+        height: z.number(),
+        radius: z.number(),
+        taper: z.number(),
+        color: color.nullable(),
+        engine,
+      }),
+    )
     .min(1)
     .max(LIMITS.stages),
   boosters: z
@@ -48,7 +57,14 @@ export const rocketSchema = z.object({
     .max(LIMITS.boosters),
   payload: z.object({
     id,
-    kind: z.enum(["capsule", "fairing", "satellite", "cargo", "habitat", "none"]),
+    kind: z.enum([
+      "capsule",
+      "fairing",
+      "satellite",
+      "cargo",
+      "habitat",
+      "none",
+    ]),
     height: z.number(),
     crew: z.number(),
     color: color.nullable(),
@@ -56,7 +72,13 @@ export const rocketSchema = z.object({
     topColor: color.nullable(),
   }),
   fins: z
-    .object({ id, count: z.number(), size: z.number(), shape: z.enum(["delta", "swept", "grid", "tiny", "shark"]), color: color.nullable() })
+    .object({
+      id,
+      count: z.number(),
+      size: z.number(),
+      shape: z.enum(["delta", "swept", "grid", "tiny", "shark"]),
+      color: color.nullable(),
+    })
     .nullable(),
   legs: z.object({ id, count: z.number(), size: z.number() }).nullable(),
   decorativeParts: z
@@ -126,10 +148,18 @@ export function sanitizeRocket(config: RocketConfig): RocketConfig {
       crew: clampInt(config.payload.crew, LIMITS.crew),
     },
     fins: config.fins
-      ? { ...config.fins, count: clampInt(config.fins.count, LIMITS.fins), size: clamp(config.fins.size, LIMITS.finSize) }
+      ? {
+          ...config.fins,
+          count: clampInt(config.fins.count, LIMITS.fins),
+          size: clamp(config.fins.size, LIMITS.finSize),
+        }
       : null,
     legs: config.legs
-      ? { ...config.legs, count: clampInt(config.legs.count, LIMITS.legs), size: clamp(config.legs.size, [0.5, 3]) }
+      ? {
+          ...config.legs,
+          count: clampInt(config.legs.count, LIMITS.legs),
+          size: clamp(config.legs.size, [0.5, 3]),
+        }
       : null,
     decorativeParts: config.decorativeParts.slice(0, LIMITS.decor).map((d) => ({
       ...d,

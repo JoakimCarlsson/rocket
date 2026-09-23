@@ -17,7 +17,9 @@ type Listener = (cue: SoundCue) => void;
 /** Browsers refuse audio before the first interaction, so stay silent until then. */
 function hasUserGesture(): boolean {
   if (typeof navigator === "undefined") return false;
-  const activation = (navigator as Navigator & { userActivation?: { hasBeenActive: boolean } }).userActivation;
+  const activation = (
+    navigator as Navigator & { userActivation?: { hasBeenActive: boolean } }
+  ).userActivation;
   return activation ? activation.hasBeenActive : true;
 }
 
@@ -28,7 +30,8 @@ function hasUserGesture(): boolean {
 class SoundBus {
   private context: AudioContext | null = null;
   private master: GainNode | null = null;
-  private rumble: { source: AudioBufferSourceNode; gain: GainNode } | null = null;
+  private rumble: { source: AudioBufferSourceNode; gain: GainNode } | null =
+    null;
   private listeners = new Set<Listener>();
   muted = false;
 
@@ -36,7 +39,10 @@ class SoundBus {
   private ensure(): AudioContext | null {
     if (typeof window === "undefined") return null;
     if (!this.context) {
-      const Ctor = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      const Ctor =
+        window.AudioContext ??
+        (window as unknown as { webkitAudioContext?: typeof AudioContext })
+          .webkitAudioContext;
       if (!Ctor) return null;
       this.context = new Ctor();
       this.master = this.context.createGain();
@@ -97,14 +103,20 @@ class SoundBus {
         break;
       case "success":
         this.stopRumble();
-        [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => this.tone(ctx, f, 0.35, "triangle", 0.22), i * 110));
+        [523, 659, 784, 1046].forEach((f, i) =>
+          setTimeout(() => this.tone(ctx, f, 0.35, "triangle", 0.22), i * 110),
+        );
         break;
       case "fail":
         this.stopRumble();
-        [392, 330, 262].forEach((f, i) => setTimeout(() => this.tone(ctx, f, 0.4, "sawtooth", 0.12), i * 160));
+        [392, 330, 262].forEach((f, i) =>
+          setTimeout(() => this.tone(ctx, f, 0.4, "sawtooth", 0.12), i * 160),
+        );
         break;
       case "achievement":
-        [784, 1175].forEach((f, i) => setTimeout(() => this.tone(ctx, f, 0.25, "triangle", 0.2), i * 90));
+        [784, 1175].forEach((f, i) =>
+          setTimeout(() => this.tone(ctx, f, 0.25, "triangle", 0.2), i * 90),
+        );
         break;
     }
   }
@@ -136,36 +148,60 @@ class SoundBus {
   }
 
   /** Plays an enveloped oscillator tone. */
-  private tone(ctx: AudioContext, frequency: number, duration: number, type: OscillatorType, volume: number): void {
+  private tone(
+    ctx: AudioContext,
+    frequency: number,
+    duration: number,
+    type: OscillatorType,
+    volume: number,
+  ): void {
+    const master = this.master;
+    if (!master) return;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = type;
     osc.frequency.value = frequency;
     gain.gain.setValueAtTime(volume, ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration);
-    osc.connect(gain).connect(this.master!);
+    osc.connect(gain).connect(master);
     osc.start();
     osc.stop(ctx.currentTime + duration + 0.05);
   }
 
   /** Plays a filtered noise burst. */
-  private noise(ctx: AudioContext, duration: number, cutoff: number, volume: number, sweep = false): void {
+  private noise(
+    ctx: AudioContext,
+    duration: number,
+    cutoff: number,
+    volume: number,
+    sweep = false,
+  ): void {
+    const master = this.master;
+    if (!master) return;
     const source = ctx.createBufferSource();
     source.buffer = this.noiseBuffer(ctx, duration);
     const filter = ctx.createBiquadFilter();
     filter.type = sweep ? "bandpass" : "lowpass";
     filter.frequency.value = cutoff;
-    if (sweep) filter.frequency.exponentialRampToValueAtTime(cutoff * 4, ctx.currentTime + duration);
+    if (sweep)
+      filter.frequency.exponentialRampToValueAtTime(
+        cutoff * 4,
+        ctx.currentTime + duration,
+      );
     const gain = ctx.createGain();
     gain.gain.setValueAtTime(volume, ctx.currentTime);
     gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration);
-    source.connect(filter).connect(gain).connect(this.master!);
+    source.connect(filter).connect(gain).connect(master);
     source.start();
   }
 
   /** Creates a buffer of white noise. */
   private noiseBuffer(ctx: AudioContext, seconds: number): AudioBuffer {
-    const buffer = ctx.createBuffer(1, Math.floor(ctx.sampleRate * seconds), ctx.sampleRate);
+    const buffer = ctx.createBuffer(
+      1,
+      Math.floor(ctx.sampleRate * seconds),
+      ctx.sampleRate,
+    );
     const data = buffer.getChannelData(0);
     for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
     return buffer;

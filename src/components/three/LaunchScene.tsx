@@ -3,11 +3,17 @@
 import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
-import { UPPER_SEGMENT, type Nozzle, type PlacedPart, type RocketLayout } from "@/lib/rocket/layout";
-import type { RocketConfig } from "@/lib/rocket/types";
+import { get2DContext } from "@/lib/canvas";
+import {
+  type Nozzle,
+  type PlacedPart,
+  type RocketLayout,
+  UPPER_SEGMENT,
+} from "@/lib/rocket/layout";
 import { thrustToWeight } from "@/lib/rocket/stats";
+import type { RocketConfig } from "@/lib/rocket/types";
 import type { LaunchEvent, LaunchPlan } from "@/lib/sim/simulate";
-import { PartMesh, RenderFlagsProvider, type RenderFlags } from "./PartMesh";
+import { PartMesh, type RenderFlags, RenderFlagsProvider } from "./PartMesh";
 import { ParticleField } from "./particles";
 
 /** Seconds of countdown before ignition. */
@@ -16,7 +22,13 @@ const PAD_TOP = 3;
 const GRAVITY = 14;
 
 /** Cue names the launch scene reports to the UI. */
-export type LaunchCue = "count:3" | "count:2" | "count:1" | "ignition" | LaunchEvent["type"] | "done";
+export type LaunchCue =
+  | "count:3"
+  | "count:2"
+  | "count:1"
+  | "ignition"
+  | LaunchEvent["type"]
+  | "done";
 
 /** Live numbers the HUD reads every frame. */
 export interface Telemetry {
@@ -59,7 +71,15 @@ function buildSegments(layout: RocketLayout): SegmentData[] {
     const parts = layout.parts.filter((p) => p.segment === key);
     const nozzles = layout.nozzles.filter((n) => n.segment === key);
     const centroid = new THREE.Vector3();
-    parts.forEach((p) => centroid.add(new THREE.Vector3(p.position[0], p.position[1] + p.dims.h / 2, p.position[2])));
+    parts.forEach((p) =>
+      centroid.add(
+        new THREE.Vector3(
+          p.position[0],
+          p.position[1] + p.dims.h / 2,
+          p.position[2],
+        ),
+      ),
+    );
     centroid.divideScalar(Math.max(1, parts.length));
     return { key, parts, nozzles, centroid };
   });
@@ -67,11 +87,23 @@ function buildSegments(layout: RocketLayout): SegmentData[] {
 
 /** Deterministic noise used for flicker and shake. */
 function wiggle(t: number, seed: number): number {
-  return Math.sin(t * 37.1 + seed) * 0.5 + Math.sin(t * 91.7 + seed * 2.3) * 0.3 + Math.sin(t * 13.3 + seed * 0.7) * 0.2;
+  return (
+    Math.sin(t * 37.1 + seed) * 0.5 +
+    Math.sin(t * 91.7 + seed * 2.3) * 0.3 +
+    Math.sin(t * 13.3 + seed * 0.7) * 0.2
+  );
 }
 
 /** The launch pad sequence: countdown, ignition, flight, separations and whatever the dice decided. */
-export function LaunchScene({ rocket, layout, plan, quality, telemetry, onCue, onComplete }: LaunchSceneProps) {
+export function LaunchScene({
+  rocket,
+  layout,
+  plan,
+  quality,
+  telemetry,
+  onCue,
+  onComplete,
+}: LaunchSceneProps) {
   const { camera, scene } = useThree();
   const segments = useMemo(() => buildSegments(layout), [layout]);
   const vehicle = useRef<THREE.Group>(null);
@@ -90,24 +122,45 @@ export function LaunchScene({ rocket, layout, plan, quality, telemetry, onCue, o
     const fire = new ParticleField(
       low ? 600 : 1400,
       new THREE.IcosahedronGeometry(1, 0),
-      new THREE.MeshBasicMaterial({ color: "#ffffff", blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, toneMapped: false }),
+      new THREE.MeshBasicMaterial({
+        color: "#ffffff",
+        blending: THREE.AdditiveBlending,
+        transparent: true,
+        depthWrite: false,
+        toneMapped: false,
+      }),
     );
     const smoke = new ParticleField(
       low ? 500 : 1100,
       new THREE.IcosahedronGeometry(1, 1),
-      new THREE.MeshStandardMaterial({ color: "#ffffff", roughness: 1, transparent: true, opacity: 0.55, depthWrite: false }),
+      new THREE.MeshStandardMaterial({
+        color: "#ffffff",
+        roughness: 1,
+        transparent: true,
+        opacity: 0.55,
+        depthWrite: false,
+      }),
     );
     return { fire, smoke };
   }, [low]);
-  useEffect(() => () => {
-    fields.fire.dispose();
-    fields.smoke.dispose();
-  }, [fields]);
+  useEffect(
+    () => () => {
+      fields.fire.dispose();
+      fields.smoke.dispose();
+    },
+    [fields],
+  );
 
   const twr = thrustToWeight(plan.stats);
   const tilt = THREE.MathUtils.degToRad(rocket.tilt);
-  const glow = useMemo(() => new THREE.Color(rocket.appearance.glow), [rocket.appearance.glow]);
-  const stageOrder = useMemo(() => rocket.stages.map((s) => `stage:${s.id}`), [rocket.stages]);
+  const glow = useMemo(
+    () => new THREE.Color(rocket.appearance.glow),
+    [rocket.appearance.glow],
+  );
+  const stageOrder = useMemo(
+    () => rocket.stages.map((s) => `stage:${s.id}`),
+    [rocket.stages],
+  );
   const scale = Math.max(1, layout.height / 60);
 
   const sim = useRef({
@@ -153,7 +206,8 @@ export function LaunchScene({ rocket, layout, plan, quality, telemetry, onCue, o
   }, [camera, scene, layout.height]);
 
   /** Returns the vehicle's thrust direction. */
-  const direction = (angle: number) => new THREE.Vector3(Math.sin(angle), Math.cos(angle), 0);
+  const direction = (angle: number) =>
+    new THREE.Vector3(Math.sin(angle), Math.cos(angle), 0);
 
   /** Updates which segments are burning: the lowest attached stage plus attached boosters. */
   const refreshFiring = () => {
@@ -170,7 +224,12 @@ export function LaunchScene({ rocket, layout, plan, quality, telemetry, onCue, o
   };
 
   /** Detaches a segment from the vehicle and turns it into free-falling debris. */
-  const detach = (key: string, velocity: THREE.Vector3, spin: THREE.Vector3, burning = 0) => {
+  const detach = (
+    key: string,
+    velocity: THREE.Vector3,
+    spin: THREE.Vector3,
+    burning = 0,
+  ) => {
     const s = sim.current;
     const group = segmentRefs.current[key];
     const segment = segments.find((seg) => seg.key === key);
@@ -178,10 +237,17 @@ export function LaunchScene({ rocket, layout, plan, quality, telemetry, onCue, o
     s.attached.delete(key);
     group.visible = false;
     vehicle.current.updateMatrixWorld(true);
-    const position = segment.centroid.clone().applyMatrix4(vehicle.current.matrixWorld);
-    const quaternion = vehicle.current.getWorldQuaternion(new THREE.Quaternion());
+    const position = segment.centroid
+      .clone()
+      .applyMatrix4(vehicle.current.matrixWorld);
+    const quaternion = vehicle.current.getWorldQuaternion(
+      new THREE.Quaternion(),
+    );
     const id = ++s.debrisId;
-    setDebris((list) => [...list, { id, segment, position, quaternion, velocity, spin, burning }]);
+    setDebris((list) => [
+      ...list,
+      { id, segment, position, quaternion, velocity, spin, burning },
+    ]);
     refreshFiring();
   };
 
@@ -189,13 +255,34 @@ export function LaunchScene({ rocket, layout, plan, quality, telemetry, onCue, o
   const explode = () => {
     const s = sim.current;
     if (!s.alive || !vehicle.current) return;
-    const center = s.pos.clone().add(direction(s.angle).multiplyScalar(layout.height * 0.4));
+    const center = s.pos
+      .clone()
+      .add(direction(s.angle).multiplyScalar(layout.height * 0.4));
     burst(center, 1);
     [...s.attached].forEach((key) => {
-      const seg = segments.find((x) => x.key === key)!;
-      const out = seg.centroid.clone().setY(0).normalize().multiplyScalar(18 + Math.random() * 24);
-      const velocity = s.vel.clone().multiplyScalar(0.4).add(out).add(new THREE.Vector3((Math.random() - 0.5) * 30, 12 + Math.random() * 25, (Math.random() - 0.5) * 30));
-      const spin = new THREE.Vector3((Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6);
+      const seg = segments.find((x) => x.key === key);
+      if (!seg) return;
+      const out = seg.centroid
+        .clone()
+        .setY(0)
+        .normalize()
+        .multiplyScalar(18 + Math.random() * 24);
+      const velocity = s.vel
+        .clone()
+        .multiplyScalar(0.4)
+        .add(out)
+        .add(
+          new THREE.Vector3(
+            (Math.random() - 0.5) * 30,
+            12 + Math.random() * 25,
+            (Math.random() - 0.5) * 30,
+          ),
+        );
+      const spin = new THREE.Vector3(
+        (Math.random() - 0.5) * 6,
+        (Math.random() - 0.5) * 6,
+        (Math.random() - 0.5) * 6,
+      );
       detach(key, velocity, spin, 0);
     });
     s.alive = false;
@@ -216,14 +303,30 @@ export function LaunchScene({ rocket, layout, plan, quality, telemetry, onCue, o
     const v = new THREE.Vector3();
     for (let i = 0; i < (low ? 120 : 260) * size; i++) {
       v.randomDirection().multiplyScalar((20 + Math.random() * 60) * scale);
-      fields.fire.spawn({ position: center, velocity: v.clone(), life: 0.6 + Math.random() * 1.2, size: 2 * scale, growth: 9 * scale * size, from: i % 3 ? fire : hot, to: black });
+      fields.fire.spawn({
+        position: center,
+        velocity: v.clone(),
+        life: 0.6 + Math.random() * 1.2,
+        size: 2 * scale,
+        growth: 9 * scale * size,
+        from: i % 3 ? fire : hot,
+        to: black,
+      });
     }
     const smokeFrom = new THREE.Color("#5b5550");
     const smokeTo = new THREE.Color("#2a2826");
     for (let i = 0; i < (low ? 50 : 110) * size; i++) {
       v.randomDirection().multiplyScalar((6 + Math.random() * 18) * scale);
       v.y = Math.abs(v.y) + 4;
-      fields.smoke.spawn({ position: center, velocity: v.clone(), life: 4 + Math.random() * 4, size: 3 * scale, growth: 16 * scale * size, from: smokeFrom, to: smokeTo });
+      fields.smoke.spawn({
+        position: center,
+        velocity: v.clone(),
+        life: 4 + Math.random() * 4,
+        size: 3 * scale,
+        growth: 16 * scale * size,
+        from: smokeFrom,
+        to: smokeTo,
+      });
     }
   };
 
@@ -238,14 +341,29 @@ export function LaunchScene({ rocket, layout, plan, quality, telemetry, onCue, o
         s.shake = 1.4;
         break;
       case "booster_sep":
-        [...s.attached].filter((k) => k.startsWith("booster:")).forEach((key) => {
-          const seg = segments.find((x) => x.key === key)!;
-          const out = seg.centroid.clone().setY(0).normalize().multiplyScalar(7);
-          detach(key, s.vel.clone().multiplyScalar(0.85).add(out), new THREE.Vector3(out.z * 0.05, 0, -out.x * 0.08));
-        });
+        [...s.attached]
+          .filter((k) => k.startsWith("booster:"))
+          .forEach((key) => {
+            const seg = segments.find((x) => x.key === key);
+            if (!seg) return;
+            const out = seg.centroid
+              .clone()
+              .setY(0)
+              .normalize()
+              .multiplyScalar(7);
+            detach(
+              key,
+              s.vel.clone().multiplyScalar(0.85).add(out),
+              new THREE.Vector3(out.z * 0.05, 0, -out.x * 0.08),
+            );
+          });
         break;
       case "stage_sep":
-        detach(`stage:${event.stageId}`, s.vel.clone().multiplyScalar(0.8).sub(dir.clone().multiplyScalar(4)), new THREE.Vector3(0.2, 0, 0.35));
+        detach(
+          `stage:${event.stageId}`,
+          s.vel.clone().multiplyScalar(0.8).sub(dir.clone().multiplyScalar(4)),
+          new THREE.Vector3(0.2, 0, 0.35),
+        );
         s.pauseUntil = s.clock + 0.7;
         s.shake = Math.max(s.shake, 0.8);
         break;
@@ -254,7 +372,15 @@ export function LaunchScene({ rocket, layout, plan, quality, telemetry, onCue, o
         const seg = segments.find((x) => x.key === key);
         if (!seg) break;
         const out = seg.centroid.clone().setY(0).normalize().multiplyScalar(22);
-        detach(key, s.vel.clone().add(out).add(new THREE.Vector3(0, 6, 0)), new THREE.Vector3(1.2, 2.4, out.x > 0 ? -1.8 : 1.8), 5);
+        detach(
+          key,
+          s.vel
+            .clone()
+            .add(out)
+            .add(new THREE.Vector3(0, 6, 0)),
+          new THREE.Vector3(1.2, 2.4, out.x > 0 ? -1.8 : 1.8),
+          5,
+        );
         s.angVel += out.x > 0 ? 0.12 : -0.12;
         s.shake = Math.max(s.shake, 1.2);
         break;
@@ -268,7 +394,14 @@ export function LaunchScene({ rocket, layout, plan, quality, telemetry, onCue, o
         s.wobbleUntil = s.clock + 2.8;
         break;
       case "payload_pop":
-        detach(UPPER_SEGMENT, s.vel.clone().add(dir.clone().multiplyScalar(30)).add(new THREE.Vector3(8, 0, 4)), new THREE.Vector3(2.5, 1, 3.2));
+        detach(
+          UPPER_SEGMENT,
+          s.vel
+            .clone()
+            .add(dir.clone().multiplyScalar(30))
+            .add(new THREE.Vector3(8, 0, 4)),
+          new THREE.Vector3(2.5, 1, 3.2),
+        );
         break;
       case "stall":
         s.thrusting = false;
@@ -293,7 +426,9 @@ export function LaunchScene({ rocket, layout, plan, quality, telemetry, onCue, o
   const emitExhaust = (dt: number, dir: THREE.Vector3) => {
     const s = sim.current;
     if (s.throttle < 0.05 || !vehicle.current) return;
-    const nozzles = segments.filter((seg) => firing.current.has(seg.key)).flatMap((seg) => seg.nozzles);
+    const nozzles = segments
+      .filter((seg) => firing.current.has(seg.key))
+      .flatMap((seg) => seg.nozzles);
     if (!nozzles.length) return;
     vehicle.current.updateMatrixWorld(true);
     const matrix = vehicle.current.matrixWorld;
@@ -302,8 +437,12 @@ export function LaunchScene({ rocket, layout, plan, quality, telemetry, onCue, o
     const fireTo = new THREE.Color(0.25, 0.04, 0);
     const smokeFrom = new THREE.Color("#d8d2c8");
     const smokeTo = new THREE.Color("#6f6a64");
-    const fireBudget = Math.ceil((low ? 14 : 34) * s.throttle * Math.min(2, dt * 60));
-    const smokeBudget = Math.ceil((low ? 4 : 9) * s.throttle * Math.min(2, dt * 60) * (s.lifted ? 1 : 1.6));
+    const fireBudget = Math.ceil(
+      (low ? 14 : 34) * s.throttle * Math.min(2, dt * 60),
+    );
+    const smokeBudget = Math.ceil(
+      (low ? 4 : 9) * s.throttle * Math.min(2, dt * 60) * (s.lifted ? 1 : 1.6),
+    );
     const world = new THREE.Vector3();
     const jitter = new THREE.Vector3();
     for (let i = 0; i < fireBudget; i++) {
@@ -312,7 +451,11 @@ export function LaunchScene({ rocket, layout, plan, quality, telemetry, onCue, o
       jitter.randomDirection().multiplyScalar(n.radius * 0.6);
       fields.fire.spawn({
         position: world.clone().add(jitter),
-        velocity: back.clone().multiplyScalar((24 + Math.random() * 20) * (0.6 + n.power / 10)).add(s.vel.clone().multiplyScalar(0.6)).add(jitter.multiplyScalar(6)),
+        velocity: back
+          .clone()
+          .multiplyScalar((24 + Math.random() * 20) * (0.6 + n.power / 10))
+          .add(s.vel.clone().multiplyScalar(0.6))
+          .add(jitter.multiplyScalar(6)),
         life: 0.22 + Math.random() * 0.25,
         size: n.radius * 0.9,
         growth: n.radius * 1.8,
@@ -322,12 +465,19 @@ export function LaunchScene({ rocket, layout, plan, quality, telemetry, onCue, o
     }
     for (let i = 0; i < smokeBudget; i++) {
       const n = nozzles[Math.floor(Math.random() * nozzles.length)];
-      world.set(...n.position).applyMatrix4(matrix).addScaledVector(back, n.radius * 4);
+      world
+        .set(...n.position)
+        .applyMatrix4(matrix)
+        .addScaledVector(back, n.radius * 4);
       jitter.randomDirection().multiplyScalar(5);
       const nearGround = world.y < PAD_TOP + 30;
       fields.smoke.spawn({
         position: world.clone(),
-        velocity: back.clone().multiplyScalar(14 + Math.random() * 10).add(jitter).add(s.vel.clone().multiplyScalar(0.25)),
+        velocity: back
+          .clone()
+          .multiplyScalar(14 + Math.random() * 10)
+          .add(jitter)
+          .add(s.vel.clone().multiplyScalar(0.25)),
         life: nearGround ? 5 + Math.random() * 4 : 2.5 + Math.random() * 2,
         size: n.radius * 1.4,
         growth: n.radius * (nearGround ? 9 : 5) * scale,
@@ -338,9 +488,17 @@ export function LaunchScene({ rocket, layout, plan, quality, telemetry, onCue, o
   };
 
   /** Ground camera at first, then a chase camera; always shaking a bit when things are loud. */
-  const moveCamera = (cam: THREE.PerspectiveCamera, dt: number, dir: THREE.Vector3, altitude: number) => {
+  const moveCamera = (
+    cam: THREE.PerspectiveCamera,
+    dt: number,
+    dir: THREE.Vector3,
+    altitude: number,
+  ) => {
     const s = sim.current;
-    const focus = s.alive || s.attached.size ? s.pos.clone().addScaledVector(dir, layout.height * 0.45) : s.lookAt;
+    const focus =
+      s.alive || s.attached.size
+        ? s.pos.clone().addScaledVector(dir, layout.height * 0.45)
+        : s.lookAt;
     s.lookAt.lerp(focus, Math.min(1, dt * 4));
     const chase = altitude > 45 * scale || Math.abs(s.pos.x) > 80 * scale;
     let desired: THREE.Vector3;
@@ -348,14 +506,17 @@ export function LaunchScene({ rocket, layout, plan, quality, telemetry, onCue, o
       desired = s.groundCamera.clone();
     } else {
       const back = 70 * scale + Math.min(260, altitude * 0.12);
-      desired = s.pos.clone().add(new THREE.Vector3(back * 0.55, -back * 0.18, back));
+      desired = s.pos
+        .clone()
+        .add(new THREE.Vector3(back * 0.55, -back * 0.18, back));
     }
     cam.position.lerp(desired, Math.min(1, dt * (chase ? 1.6 : 3)));
     const amp = s.shake * 0.35 * scale;
     cam.position.x += wiggle(s.clock, 11) * amp;
     cam.position.y += wiggle(s.clock, 17) * amp;
     const look = s.lookAt.clone();
-    if (s.arrived && celestial.current && plan.outcome !== "orbit") look.lerp(celestial.current.position, 0.25);
+    if (s.arrived && celestial.current && plan.outcome !== "orbit")
+      look.lerp(celestial.current.position, 0.25);
     cam.lookAt(look);
     const targetFov = chase ? 42 : 38;
     cam.fov = THREE.MathUtils.damp(cam.fov, targetFov, 2, dt);
@@ -386,7 +547,10 @@ export function LaunchScene({ rocket, layout, plan, quality, telemetry, onCue, o
       [2.4, "count:1"],
       [COUNTDOWN_SECONDS, "ignition"],
     ];
-    while (s.countdownCue < counts.length && s.clock >= counts[s.countdownCue][0]) {
+    while (
+      s.countdownCue < counts.length &&
+      s.clock >= counts[s.countdownCue][0]
+    ) {
       const cue = counts[s.countdownCue][1];
       onCue(cue);
       if (cue === "ignition") {
@@ -396,37 +560,51 @@ export function LaunchScene({ rocket, layout, plan, quality, telemetry, onCue, o
       }
       s.countdownCue++;
     }
-    while (s.eventIndex < plan.events.length && t >= plan.events[s.eventIndex].t) {
+    while (
+      s.eventIndex < plan.events.length &&
+      t >= plan.events[s.eventIndex].t
+    ) {
       handleEvent(plan.events[s.eventIndex]);
       s.eventIndex++;
     }
 
     const burning = s.alive && s.thrusting && s.clock >= s.pauseUntil;
-    s.throttle = THREE.MathUtils.damp(s.throttle, burning ? 1 : 0, burning ? 4 : 10, dt);
+    s.throttle = THREE.MathUtils.damp(
+      s.throttle,
+      burning ? 1 : 0,
+      burning ? 4 : 10,
+      dt,
+    );
     flags.current.engineGlow = s.throttle;
 
     let dir = direction(s.angle);
     if (s.lifted && s.alive) {
       if (burning) {
-        const accel = 6 * THREE.MathUtils.clamp(twr, 0.9, 3.5) * (s.spinning ? 0.7 : 1);
+        const accel =
+          6 * THREE.MathUtils.clamp(twr, 0.9, 3.5) * (s.spinning ? 0.7 : 1);
         s.vel.addScaledVector(dir, accel * dt);
         s.vel.multiplyScalar(1 - 0.02 * dt);
       } else {
         s.vel.y -= GRAVITY * dt;
       }
       if (!s.spinning && burning) {
-        const program = rocket.tilt === 0 && t > 5 ? Math.min(0.55, (t - 5) * 0.055) : tilt;
+        const program =
+          rocket.tilt === 0 && t > 5 ? Math.min(0.55, (t - 5) * 0.055) : tilt;
         s.angle = THREE.MathUtils.damp(s.angle, program, 0.8, dt);
       }
       if (s.spinning) s.angVel *= 1 + 0.25 * dt;
       s.angle += s.angVel * dt;
-      if (!burning && !s.spinning) s.angVel += Math.sign(s.angVel || 1) * 0.4 * dt;
+      if (!burning && !s.spinning)
+        s.angVel += Math.sign(s.angVel || 1) * 0.4 * dt;
       if (s.clock < s.wobbleUntil) s.angle += Math.sin(s.clock * 11) * 0.9 * dt;
       s.roll += s.rollVel * dt;
       dir = direction(s.angle);
       s.pos.addScaledVector(s.vel, dt);
       if (burning && s.vel.lengthSq() > 1) {
-        s.vel.lerp(dir.clone().multiplyScalar(s.vel.length()), Math.min(1, dt * (s.spinning ? 0.8 : 2.5)));
+        s.vel.lerp(
+          dir.clone().multiplyScalar(s.vel.length()),
+          Math.min(1, dt * (s.spinning ? 0.8 : 2.5)),
+        );
       }
       if (s.pos.y < PAD_TOP - layout.minY - 0.5 && s.vel.y < 0) {
         s.pos.y = PAD_TOP - layout.minY - 0.5;
@@ -442,7 +620,18 @@ export function LaunchScene({ rocket, layout, plan, quality, telemetry, onCue, o
           s.tipping = false;
           s.shake = 2;
           s.thrusting = false;
-          burst(s.pos.clone().add(new THREE.Vector3(Math.sign(s.angle) * layout.height * 0.4, 0, 0)), 0.3);
+          burst(
+            s.pos
+              .clone()
+              .add(
+                new THREE.Vector3(
+                  Math.sign(s.angle) * layout.height * 0.4,
+                  0,
+                  0,
+                ),
+              ),
+            0.3,
+          );
         }
       }
     } else if (!s.lifted && s.thrusting) {
@@ -458,8 +647,11 @@ export function LaunchScene({ rocket, layout, plan, quality, telemetry, onCue, o
     fields.smoke.update(dt, 0.45, 1.6, 1.5);
 
     if (engineLight.current) {
-      engineLight.current.position.copy(s.pos).addScaledVector(dir, layout.minY - 4);
-      engineLight.current.intensity = s.throttle * 60000 * scale * (0.85 + wiggle(s.clock, 3) * 0.3);
+      engineLight.current.position
+        .copy(s.pos)
+        .addScaledVector(dir, layout.minY - 4);
+      engineLight.current.intensity =
+        s.throttle * 60000 * scale * (0.85 + wiggle(s.clock, 3) * 0.3);
       engineLight.current.color.copy(glow);
     }
     if (flash.current) flash.current.intensity *= Math.max(0, 1 - dt * 3.5);
@@ -490,17 +682,33 @@ export function LaunchScene({ rocket, layout, plan, quality, telemetry, onCue, o
     s.shake = Math.max(0, s.shake - dt * (s.shake > 2 ? 1.2 : 0.6));
   });
 
-  const celestialKind = plan.outcome === "lunar" ? "moon" : plan.outcome === "mars" ? "mars" : null;
+  const celestialKind =
+    plan.outcome === "lunar" ? "moon" : plan.outcome === "mars" ? "mars" : null;
 
   return (
     <RenderFlagsProvider value={flags}>
       <Sky material={sky} />
       <Starfield material={stars} />
       <hemisphereLight args={["#ffd7b5", "#2a2320", 0.9]} />
-      <directionalLight position={[-300, 200, 200]} intensity={2.2} color="#ffc28f" />
+      <directionalLight
+        position={[-300, 200, 200]}
+        intensity={2.2}
+        color="#ffc28f"
+      />
       <ambientLight intensity={0.25} />
-      <pointLight ref={engineLight} distance={400 * scale} decay={2} intensity={0} />
-      <pointLight ref={flash} distance={900 * scale} decay={2} intensity={0} color="#ffb070" />
+      <pointLight
+        ref={engineLight}
+        distance={400 * scale}
+        decay={2}
+        intensity={0}
+      />
+      <pointLight
+        ref={flash}
+        distance={900 * scale}
+        decay={2}
+        intensity={0}
+        color="#ffb070"
+      />
 
       <Ground />
       <Pad height={layout.height} />
@@ -508,29 +716,58 @@ export function LaunchScene({ rocket, layout, plan, quality, telemetry, onCue, o
 
       <group ref={vehicle}>
         {segments.map((seg) => (
-          <group key={seg.key} ref={(el) => void (segmentRefs.current[seg.key] = el)}>
+          <group
+            key={seg.key}
+            ref={(el) => void (segmentRefs.current[seg.key] = el)}
+          >
             {seg.parts.map((part) => (
-              <group key={part.key} position={part.position} rotation={part.rotation}>
+              <group
+                key={part.key}
+                position={part.position}
+                rotation={part.rotation}
+              >
                 <PartMesh part={part} finish={rocket.appearance.finish} />
               </group>
             ))}
-            <Flames nozzles={seg.nozzles} glow={glow} active={() => firing.current.has(seg.key) ? sim.current.throttle : 0} />
+            <Flames
+              nozzles={seg.nozzles}
+              glow={glow}
+              active={() =>
+                firing.current.has(seg.key) ? sim.current.throttle : 0
+              }
+            />
           </group>
         ))}
       </group>
 
       {debris.map((d) => (
-        <Debris key={d.id} spec={d} finish={rocket.appearance.finish} glow={glow} smoke={fields.smoke} />
+        <Debris
+          key={d.id}
+          spec={d}
+          finish={rocket.appearance.finish}
+          glow={glow}
+          smoke={fields.smoke}
+        />
       ))}
 
       <primitive object={fields.smoke.mesh} />
       <primitive object={fields.fire.mesh} />
 
       {celestialKind && (
-        <group ref={celestial} position={[900, 3200, -2600]} visible={false} scale={0.4}>
+        <group
+          ref={celestial}
+          position={[900, 3200, -2600]}
+          visible={false}
+          scale={0.4}
+        >
           <mesh>
             <sphereGeometry args={[420, 64, 32]} />
-            <meshStandardMaterial color={celestialKind === "moon" ? "#d9d6cf" : "#c4552b"} roughness={1} emissive={celestialKind === "moon" ? "#3a3833" : "#3a1206"} fog={false} />
+            <meshStandardMaterial
+              color={celestialKind === "moon" ? "#d9d6cf" : "#c4552b"}
+              roughness={1}
+              emissive={celestialKind === "moon" ? "#3a3833" : "#3a1206"}
+              fog={false}
+            />
           </mesh>
         </group>
       )}
@@ -539,14 +776,38 @@ export function LaunchScene({ rocket, layout, plan, quality, telemetry, onCue, o
 }
 
 /** Flame cones hanging under nozzles; `active` returns a 0..1 throttle each frame. */
-function Flames({ nozzles, glow, active }: { nozzles: Nozzle[]; glow: THREE.Color; active: () => number }) {
+function Flames({
+  nozzles,
+  glow,
+  active,
+}: {
+  nozzles: Nozzle[];
+  glow: THREE.Color;
+  active: () => number;
+}) {
   const group = useRef<THREE.Group>(null);
   const outer = useMemo(
-    () => new THREE.MeshBasicMaterial({ color: glow.clone().multiplyScalar(1.6), transparent: true, opacity: 0.75, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }),
+    () =>
+      new THREE.MeshBasicMaterial({
+        color: glow.clone().multiplyScalar(1.6),
+        transparent: true,
+        opacity: 0.75,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        toneMapped: false,
+      }),
     [glow],
   );
   const inner = useMemo(
-    () => new THREE.MeshBasicMaterial({ color: new THREE.Color(3, 2.6, 2), transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, toneMapped: false }),
+    () =>
+      new THREE.MeshBasicMaterial({
+        color: new THREE.Color(3, 2.6, 2),
+        transparent: true,
+        opacity: 0.9,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        toneMapped: false,
+      }),
     [],
   );
   const cone = useMemo(() => {
@@ -555,11 +816,14 @@ function Flames({ nozzles, glow, active }: { nozzles: Nozzle[]; glow: THREE.Colo
     g.translate(0, -0.5, 0);
     return g;
   }, []);
-  useEffect(() => () => {
-    outer.dispose();
-    inner.dispose();
-    cone.dispose();
-  }, [outer, inner, cone]);
+  useEffect(
+    () => () => {
+      outer.dispose();
+      inner.dispose();
+      cone.dispose();
+    },
+    [outer, inner, cone],
+  );
   useFrame(({ clock }) => {
     const g = group.current;
     if (!g) return;
@@ -569,25 +833,62 @@ function Flames({ nozzles, glow, active }: { nozzles: Nozzle[]; glow: THREE.Colo
       const n = nozzles[Math.floor(i / 2)];
       const isInner = i % 2 === 1;
       const flicker = 1 + wiggle(clock.elapsedTime * 1.3, i) * 0.18;
-      const length = n.radius * (5 + n.power * 0.9) * throttle * flicker * (isInner ? 0.45 : 1);
-      child.scale.set(n.radius * (isInner ? 0.55 : 0.95), Math.max(0.001, length), n.radius * (isInner ? 0.55 : 0.95));
+      const length =
+        n.radius *
+        (5 + n.power * 0.9) *
+        throttle *
+        flicker *
+        (isInner ? 0.45 : 1);
+      child.scale.set(
+        n.radius * (isInner ? 0.55 : 0.95),
+        Math.max(0.001, length),
+        n.radius * (isInner ? 0.55 : 0.95),
+      );
     });
   });
   return (
     <group ref={group} visible={false}>
       {nozzles.flatMap((n, i) => [
-        <mesh key={`o${i}`} geometry={cone} material={outer} position={n.position} />,
-        <mesh key={`i${i}`} geometry={cone} material={inner} position={n.position} />,
+        <mesh
+          key={`o${i}`}
+          geometry={cone}
+          material={outer}
+          position={n.position}
+        />,
+        <mesh
+          key={`i${i}`}
+          geometry={cone}
+          material={inner}
+          position={n.position}
+        />,
       ])}
     </group>
   );
 }
 
 /** A separated chunk falling (or, if still burning, flying) under simple fake physics. */
-function Debris({ spec, finish, glow, smoke }: { spec: DebrisSpec; finish: RocketConfig["appearance"]["finish"]; glow: THREE.Color; smoke: ParticleField }) {
+function Debris({
+  spec,
+  finish,
+  glow,
+  smoke,
+}: {
+  spec: DebrisSpec;
+  finish: RocketConfig["appearance"]["finish"];
+  glow: THREE.Color;
+  smoke: ParticleField;
+}) {
   const group = useRef<THREE.Group>(null);
-  const state = useRef({ pos: spec.position.clone(), vel: spec.velocity.clone(), quat: spec.quaternion.clone(), age: 0 });
-  const offset = useMemo(() => spec.segment.centroid.clone().negate(), [spec.segment.centroid]);
+  const state = useRef({
+    pos: spec.position.clone(),
+    vel: spec.velocity.clone(),
+    quat: spec.quaternion.clone(),
+    age: 0,
+  });
+  const offset = useMemo(
+    () => spec.segment.centroid.clone().negate(),
+    [spec.segment.centroid],
+  );
   const smokeFrom = useMemo(() => new THREE.Color("#8c857c"), []);
   const smokeTo = useMemo(() => new THREE.Color("#3a3734"), []);
   useFrame((_, rawDelta) => {
@@ -608,14 +909,25 @@ function Debris({ spec, finish, glow, smoke }: { spec: DebrisSpec; finish: Rocke
       s.vel.y = Math.abs(s.vel.y) * 0.2;
       spec.spin.multiplyScalar(0.6);
     }
-    const spin = new THREE.Quaternion().setFromEuler(new THREE.Euler(spec.spin.x * dt, spec.spin.y * dt, spec.spin.z * dt));
+    const spin = new THREE.Quaternion().setFromEuler(
+      new THREE.Euler(spec.spin.x * dt, spec.spin.y * dt, spec.spin.z * dt),
+    );
     s.quat.multiply(spin);
     g.position.copy(s.pos);
     g.quaternion.copy(s.quat);
     if ((burning || s.age < 1.5) && Math.random() < 0.5) {
       smoke.spawn({
         position: s.pos.clone(),
-        velocity: up.clone().multiplyScalar(-6).add(new THREE.Vector3((Math.random() - 0.5) * 4, 2, (Math.random() - 0.5) * 4)),
+        velocity: up
+          .clone()
+          .multiplyScalar(-6)
+          .add(
+            new THREE.Vector3(
+              (Math.random() - 0.5) * 4,
+              2,
+              (Math.random() - 0.5) * 4,
+            ),
+          ),
         life: 2 + Math.random() * 2,
         size: 1.2,
         growth: 5,
@@ -628,18 +940,32 @@ function Debris({ spec, finish, glow, smoke }: { spec: DebrisSpec; finish: Rocke
     <group ref={group} position={spec.position} quaternion={spec.quaternion}>
       <group position={offset}>
         {spec.segment.parts.map((part) => (
-          <group key={part.key} position={part.position} rotation={part.rotation}>
+          <group
+            key={part.key}
+            position={part.position}
+            rotation={part.rotation}
+          >
             <PartMesh part={part} finish={finish} />
           </group>
         ))}
-        {spec.burning > 0 && <Flames nozzles={spec.segment.nozzles} glow={glow} active={() => (state.current.age < spec.burning ? 1 : 0)} />}
+        {spec.burning > 0 && (
+          <Flames
+            nozzles={spec.segment.nozzles}
+            glow={glow}
+            active={() => (state.current.age < spec.burning ? 1 : 0)}
+          />
+        )}
       </group>
     </group>
   );
 }
 
 /** Dusk gradient sky that fades to black as the rocket climbs. */
-function Sky({ material }: { material: React.RefObject<THREE.ShaderMaterial | null> }) {
+function Sky({
+  material,
+}: {
+  material: React.RefObject<THREE.ShaderMaterial | null>;
+}) {
   const uniforms = useMemo(
     () => ({
       uSpace: { value: 0 },
@@ -672,7 +998,11 @@ function Sky({ material }: { material: React.RefObject<THREE.ShaderMaterial | nu
 }
 
 /** Stars that fade in with altitude. */
-function Starfield({ material }: { material: React.RefObject<THREE.PointsMaterial | null> }) {
+function Starfield({
+  material,
+}: {
+  material: React.RefObject<THREE.PointsMaterial | null>;
+}) {
   const geometry = useMemo(() => {
     const g = new THREE.BufferGeometry();
     const points = new Float32Array(2400 * 3);
@@ -688,7 +1018,16 @@ function Starfield({ material }: { material: React.RefObject<THREE.PointsMateria
   useFrame(({ camera }) => group.current?.position.copy(camera.position));
   return (
     <points ref={group} geometry={geometry}>
-      <pointsMaterial ref={material} size={1.6} sizeAttenuation={false} color="#ffffff" transparent opacity={0} depthWrite={false} fog={false} />
+      <pointsMaterial
+        ref={material}
+        size={1.6}
+        sizeAttenuation={false}
+        color="#ffffff"
+        transparent
+        opacity={0}
+        depthWrite={false}
+        fog={false}
+      />
     </points>
   );
 }
@@ -700,7 +1039,12 @@ function Ground() {
       Array.from({ length: 26 }, (_, i) => {
         const a = (i / 26) * Math.PI * 2;
         const d = 1400 + (i % 5) * 260;
-        return { x: Math.cos(a) * d, z: Math.sin(a) * d - 400, h: 120 + ((i * 53) % 7) * 45, r: 300 + ((i * 31) % 5) * 90 };
+        return {
+          x: Math.cos(a) * d,
+          z: Math.sin(a) * d - 400,
+          h: 120 + ((i * 53) % 7) * 45,
+          r: 300 + ((i * 31) % 5) * 90,
+        };
       }),
     [],
   );
@@ -729,7 +1073,12 @@ function Pad({ height }: { height: number }) {
   const towerHeight = Math.max(40, height * 0.95);
   const light = useRef<THREE.MeshBasicMaterial>(null);
   useFrame(({ clock }) => {
-    if (light.current) light.current.color.setRGB(Math.sin(clock.elapsedTime * 3) > 0 ? 4 : 0.4, 0.1, 0.05);
+    if (light.current)
+      light.current.color.setRGB(
+        Math.sin(clock.elapsedTime * 3) > 0 ? 4 : 0.4,
+        0.1,
+        0.05,
+      );
   });
   return (
     <group>
@@ -748,16 +1097,27 @@ function Pad({ height }: { height: number }) {
       <group position={[-26, 0, -6]}>
         {[-2.5, 2.5].flatMap((dx) =>
           [-2.5, 2.5].map((dz) => (
-            <mesh key={`${dx}${dz}`} position={[dx, towerHeight / 2 + PAD_TOP, dz]}>
+            <mesh
+              key={`${dx}${dz}`}
+              position={[dx, towerHeight / 2 + PAD_TOP, dz]}
+            >
               <boxGeometry args={[0.5, towerHeight, 0.5]} />
-              <meshStandardMaterial color="#8a2a1a" metalness={0.6} roughness={0.5} />
+              <meshStandardMaterial
+                color="#8a2a1a"
+                metalness={0.6}
+                roughness={0.5}
+              />
             </mesh>
           )),
         )}
         {Array.from({ length: Math.floor(towerHeight / 7) }, (_, i) => (
           <mesh key={i} position={[0, PAD_TOP + i * 7 + 3.5, 0]}>
             <boxGeometry args={[5.5, 0.3, 5.5]} />
-            <meshStandardMaterial color="#6b2014" metalness={0.6} roughness={0.5} />
+            <meshStandardMaterial
+              color="#6b2014"
+              metalness={0.6}
+              roughness={0.5}
+            />
           </mesh>
         ))}
         <mesh position={[0, towerHeight + PAD_TOP + 1, 0]}>
@@ -765,10 +1125,18 @@ function Pad({ height }: { height: number }) {
           <meshBasicMaterial ref={light} color="#ff2200" toneMapped={false} />
         </mesh>
       </group>
-      {[[-70, -40], [80, -50], [-50, -90]].map(([x, z], i) => (
+      {[
+        [-70, -40],
+        [80, -50],
+        [-50, -90],
+      ].map(([x, z], i) => (
         <mesh key={i} position={[x, 6, z]}>
           <cylinderGeometry args={[4, 4, 12, 16]} />
-          <meshStandardMaterial color="#d8d4cc" roughness={0.6} metalness={0.4} />
+          <meshStandardMaterial
+            color="#d8d4cc"
+            roughness={0.6}
+            metalness={0.4}
+          />
         </mesh>
       ))}
     </group>
@@ -780,7 +1148,7 @@ function Clouds() {
   const texture = useMemo(() => {
     const canvas = document.createElement("canvas");
     canvas.width = canvas.height = 128;
-    const g = canvas.getContext("2d")!;
+    const g = get2DContext(canvas);
     for (let i = 0; i < 7; i++) {
       const x = 30 + ((i * 37) % 68);
       const y = 52 + ((i * 23) % 26);
@@ -809,8 +1177,18 @@ function Clouds() {
   return (
     <group>
       {clouds.map((c, i) => (
-        <sprite key={i} position={[c.x, c.y, c.z]} scale={[c.s * 1.8, c.s * 0.7, 1]}>
-          <spriteMaterial map={texture} color="#ffe2cc" transparent opacity={0.8} depthWrite={false} />
+        <sprite
+          key={i}
+          position={[c.x, c.y, c.z]}
+          scale={[c.s * 1.8, c.s * 0.7, 1]}
+        >
+          <spriteMaterial
+            map={texture}
+            color="#ffe2cc"
+            transparent
+            opacity={0.8}
+            depthWrite={false}
+          />
         </sprite>
       ))}
     </group>

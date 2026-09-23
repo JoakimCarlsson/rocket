@@ -8,10 +8,18 @@ import { generateName } from "./ai/names";
 import type { HistoryEntry } from "./ai/provider";
 import { loadAchievements, saveAchievements, saveSession } from "./persistence";
 import { applyActions } from "./rocket/apply";
-import { DEFAULT_NAME, createRandomRocket, createStarterRocket } from "./rocket/defaults";
+import {
+  createRandomRocket,
+  createStarterRocket,
+  DEFAULT_NAME,
+} from "./rocket/defaults";
 import { createRng, newSeed } from "./rocket/random";
 import type { RocketConfig } from "./rocket/types";
-import { simulateLaunch, summarizeMission, type LaunchPlan } from "./sim/simulate";
+import {
+  type LaunchPlan,
+  simulateLaunch,
+  summarizeMission,
+} from "./sim/simulate";
 import { sound } from "./sound";
 
 /** Which screen the builder is showing. */
@@ -52,7 +60,10 @@ export interface BuilderState {
   reset: () => void;
   randomize: () => void;
   loadRocket: (rocket: RocketConfig, note: string, prompt?: string) => void;
-  hydrate: (rocket: RocketConfig, messages: { role: "user" | "ai"; text: string }[]) => void;
+  hydrate: (
+    rocket: RocketConfig,
+    messages: { role: "user" | "ai"; text: string }[],
+  ) => void;
   launch: () => void;
   beginFlight: () => void;
   finishLaunch: () => void;
@@ -73,7 +84,8 @@ function message(role: Message["role"], text: string): Message {
 function historyFrom(messages: Message[]): HistoryEntry[] {
   const pairs: HistoryEntry[] = [];
   for (let i = 0; i < messages.length - 1; i++) {
-    if (messages[i].role === "user" && messages[i + 1].role === "ai") pairs.push({ prompt: messages[i].text, response: messages[i + 1].text });
+    if (messages[i].role === "user" && messages[i + 1].role === "ai")
+      pairs.push({ prompt: messages[i].text, response: messages[i + 1].text });
   }
   return pairs.slice(-6);
 }
@@ -81,10 +93,22 @@ function historyFrom(messages: Message[]): HistoryEntry[] {
 /** Global builder store. */
 export const useBuilder = create<BuilderState>((set, get) => {
   /** Records a new rocket version with undo history and achievement checks. */
-  const commit = (rocket: RocketConfig, label: string, extra: Partial<BuilderState> = {}) => {
+  const commit = (
+    rocket: RocketConfig,
+    label: string,
+    extra: Partial<BuilderState> = {},
+  ) => {
     const state = get();
-    const past = [...state.past, { rocket: state.rocket, label }].slice(-HISTORY_LIMIT);
-    set({ rocket, past, future: [], changeTick: state.changeTick + 1, ...extra });
+    const past = [...state.past, { rocket: state.rocket, label }].slice(
+      -HISTORY_LIMIT,
+    );
+    set({
+      rocket,
+      past,
+      future: [],
+      changeTick: state.changeTick + 1,
+      ...extra,
+    });
     unlock(configAchievements(rocket));
     persist();
   };
@@ -103,19 +127,35 @@ export const useBuilder = create<BuilderState>((set, get) => {
   /** Saves the session so a refresh keeps the rocket. */
   const persist = () => {
     const { rocket, messages } = get();
-    saveSession({ rocket, messages: messages.map(({ role, text }) => ({ role, text })) });
+    saveSession({
+      rocket,
+      messages: messages.map(({ role, text }) => ({ role, text })),
+    });
   };
 
   /** Applies an AI result to the current rocket. */
   const applyResult = (result: AIResult, prompt: string) => {
     const state = get();
     const { config, notes } = applyActions(state.rocket, result.actions);
-    if (result.suggestedName && config.name === DEFAULT_NAME) config.name = result.suggestedName;
-    const response = result.response || (result.actions.length ? "Done." : "I couldn't turn that into a change. Try another description.");
-    const reply = [response, ...notes.filter((n) => !response.includes(n))].join(" ");
+    if (result.suggestedName && config.name === DEFAULT_NAME)
+      config.name = result.suggestedName;
+    const response =
+      result.response ||
+      (result.actions.length
+        ? "Done."
+        : "I couldn't turn that into a change. Try another description.");
+    const reply = [
+      response,
+      ...notes.filter((n) => !response.includes(n)),
+    ].join(" ");
     const messages = [...state.messages, message("ai", reply)];
     if (result.actions.length || config.name !== state.rocket.name) {
-      commit(config, prompt, { messages, busy: false, lastPrompt: prompt, providerLabel: result.provider });
+      commit(config, prompt, {
+        messages,
+        busy: false,
+        lastPrompt: prompt,
+        providerLabel: result.provider,
+      });
       sound.play("whoosh");
     } else {
       set({ messages, busy: false, providerLabel: result.provider });
@@ -142,7 +182,10 @@ export const useBuilder = create<BuilderState>((set, get) => {
       const prompt = text.trim().slice(0, 500);
       if (!prompt || get().busy) return;
       const state = get();
-      set({ busy: true, messages: [...state.messages, message("user", prompt)] });
+      set({
+        busy: true,
+        messages: [...state.messages, message("user", prompt)],
+      });
       sound.play("click");
       try {
         const result = await getAIProvider().interpret({
@@ -153,7 +196,16 @@ export const useBuilder = create<BuilderState>((set, get) => {
         });
         applyResult(result, prompt);
       } catch {
-        set({ busy: false, messages: [...get().messages, message("ai", "Something shorted out in the control room. Try again.")] });
+        set({
+          busy: false,
+          messages: [
+            ...get().messages,
+            message(
+              "ai",
+              "Something shorted out in the control room. Try again.",
+            ),
+          ],
+        });
       }
     },
 
@@ -162,7 +214,11 @@ export const useBuilder = create<BuilderState>((set, get) => {
       if (state.busy || !state.plan) return;
       const mission = summarizeMission(state.rocket, state.plan);
       const prompt = "Ask AI to fix it.";
-      set({ busy: true, mode: "build", messages: [...state.messages, message("user", prompt)] });
+      set({
+        busy: true,
+        mode: "build",
+        messages: [...state.messages, message("user", prompt)],
+      });
       try {
         const result = await getAIProvider().interpret({
           instruction: `Repair the rocket after this fictional mission: ${mission.headline}. Problems: ${mission.problems.join(", ") || "none obvious"}.`,
@@ -181,7 +237,12 @@ export const useBuilder = create<BuilderState>((set, get) => {
       const { past, future, rocket, changeTick } = get();
       const previous = past[past.length - 1];
       if (!previous) return;
-      set({ rocket: previous.rocket, past: past.slice(0, -1), future: [{ rocket, label: previous.label }, ...future], changeTick: changeTick + 1 });
+      set({
+        rocket: previous.rocket,
+        past: past.slice(0, -1),
+        future: [{ rocket, label: previous.label }, ...future],
+        changeTick: changeTick + 1,
+      });
       sound.play("click");
       persist();
     },
@@ -190,13 +251,27 @@ export const useBuilder = create<BuilderState>((set, get) => {
       const { past, future, rocket, changeTick } = get();
       const next = future[0];
       if (!next) return;
-      set({ rocket: next.rocket, future: future.slice(1), past: [...past, { rocket, label: next.label }], changeTick: changeTick + 1 });
+      set({
+        rocket: next.rocket,
+        future: future.slice(1),
+        past: [...past, { rocket, label: next.label }],
+        changeTick: changeTick + 1,
+      });
       sound.play("click");
       persist();
     },
 
     reset() {
-      commit(createStarterRocket(), "reset", { messages: [...get().messages, message("ai", "Back to the starter rocket. Clean slate, clean conscience.")], lastPrompt: "" });
+      commit(createStarterRocket(), "reset", {
+        messages: [
+          ...get().messages,
+          message(
+            "ai",
+            "Back to the starter rocket. Clean slate, clean conscience.",
+          ),
+        ],
+        lastPrompt: "",
+      });
       sound.play("whoosh");
     },
 
@@ -204,23 +279,43 @@ export const useBuilder = create<BuilderState>((set, get) => {
       const seed = newSeed();
       const rocket = createRandomRocket(seed);
       rocket.name = generateName(rocket, createRng(seed));
-      commit(rocket, "randomize", { messages: [...get().messages, message("ai", "Randomised. I take no responsibility for this one.")], lastPrompt: "Randomize" });
+      commit(rocket, "randomize", {
+        messages: [
+          ...get().messages,
+          message("ai", "Randomised. I take no responsibility for this one."),
+        ],
+        lastPrompt: "Randomize",
+      });
       sound.play("whoosh");
     },
 
     loadRocket(rocket, note, prompt = "") {
-      commit(rocket, "load", { messages: [...get().messages, message("ai", note)], lastPrompt: prompt, mode: "build", plan: null });
+      commit(rocket, "load", {
+        messages: [...get().messages, message("ai", note)],
+        lastPrompt: prompt,
+        mode: "build",
+        plan: null,
+      });
     },
 
     hydrate(rocket, messages) {
-      set({ rocket, messages: messages.map((m) => message(m.role, m.text)), unlocked: loadAchievements() });
+      set({
+        rocket,
+        messages: messages.map((m) => message(m.role, m.text)),
+        unlocked: loadAchievements(),
+      });
     },
 
     launch() {
       const state = get();
-      if (state.busy || (state.mode !== "build" && state.mode !== "report")) return;
+      if (state.busy || (state.mode !== "build" && state.mode !== "report"))
+        return;
       const attempt = state.attempt + 1;
-      set({ mode: "transition", attempt, plan: simulateLaunch(state.rocket, attempt) });
+      set({
+        mode: "transition",
+        attempt,
+        plan: simulateLaunch(state.rocket, attempt),
+      });
       sound.play("whoosh");
     },
 

@@ -89,7 +89,11 @@ export function bellHeight(engine: EngineSpec): number {
 }
 
 /** Arranges engine positions inside a circle of the given radius. */
-function clusterPositions(count: number, radius: number, size: number): [number, number][] {
+function clusterPositions(
+  count: number,
+  radius: number,
+  size: number,
+): [number, number][] {
   if (count <= 1) return [[0, 0]];
   const spots: [number, number][] = [];
   const center = count >= 5 && count % 2 === 1 ? 1 : 0;
@@ -100,7 +104,10 @@ function clusterPositions(count: number, radius: number, size: number): [number,
   const outer = ringCount - inner;
   for (let i = 0; i < inner; i++) {
     const a = (i / inner) * Math.PI * 2;
-    spots.push([Math.cos(a) * ringRadius * 0.45, Math.sin(a) * ringRadius * 0.45]);
+    spots.push([
+      Math.cos(a) * ringRadius * 0.45,
+      Math.sin(a) * ringRadius * 0.45,
+    ]);
   }
   for (let i = 0; i < outer; i++) {
     const a = (i / outer) * Math.PI * 2 + Math.PI / outer;
@@ -128,8 +135,16 @@ export function layoutRocket(config: RocketConfig): RocketLayout {
   const nozzles: Nozzle[] = [];
   const stack: StackEntry[] = [];
 
-  const push = (part: Omit<PlacedPart, "rotation" | "color2" | "variant"> & Partial<PlacedPart>) => {
-    parts.push({ rotation: [0, 0, 0], color2: appearance.secondary, variant: "", ...part });
+  const push = (
+    part: Omit<PlacedPart, "rotation" | "color2" | "variant"> &
+      Partial<PlacedPart>,
+  ) => {
+    parts.push({
+      rotation: [0, 0, 0],
+      color2: appearance.secondary,
+      variant: "",
+      ...part,
+    });
   };
 
   let y = 0;
@@ -175,7 +190,11 @@ export function layoutRocket(config: RocketConfig): RocketLayout {
     });
 
     const bell = bellHeight(stage.engine);
-    const spots = clusterPositions(stage.engine.count, rBottom, stage.engine.size);
+    const spots = clusterPositions(
+      stage.engine.count,
+      rBottom,
+      stage.engine.size,
+    );
     spots.forEach(([x, z], engineIndex) => {
       push({
         key: `${stage.id}:engine:${engineIndex}`,
@@ -184,7 +203,12 @@ export function layoutRocket(config: RocketConfig): RocketLayout {
         segment,
         variant: stage.engine.style,
         position: [x, y - bell + 0.05, z],
-        dims: { h: bell, r: stage.engine.size * 0.72, r2: stage.engine.size * 0.3, s: stage.engine.power },
+        dims: {
+          h: bell,
+          r: stage.engine.size * 0.72,
+          r2: stage.engine.size * 0.3,
+          s: stage.engine.power,
+        },
         color: stage.engine.color,
         color2: appearance.glow,
       });
@@ -214,11 +238,12 @@ export function layoutRocket(config: RocketConfig): RocketLayout {
   const radiusAt = (height: number): number => {
     for (const entry of stack) {
       if (height >= entry.base && height <= entry.top) {
-        const t = (height - entry.base) / Math.max(0.001, entry.top - entry.base);
+        const t =
+          (height - entry.base) / Math.max(0.001, entry.top - entry.base);
         return entry.rBottom + (entry.rTop - entry.rBottom) * t;
       }
     }
-    return height > coreTopY ? upperR : bottom?.rBottom ?? 2;
+    return height > coreTopY ? upperR : (bottom?.rBottom ?? 2);
   };
   const segmentAt = (height: number): string => {
     for (const entry of stack) {
@@ -235,7 +260,13 @@ export function layoutRocket(config: RocketConfig): RocketLayout {
   if (payload.kind !== "none") {
     const r2 = upperR;
     const r =
-      payload.kind === "capsule" ? upperR * 0.58 : payload.kind === "fairing" ? upperR * 1.12 : payload.kind === "satellite" ? upperR * 0.75 : upperR;
+      payload.kind === "capsule"
+        ? upperR * 0.58
+        : payload.kind === "fairing"
+          ? upperR * 1.12
+          : payload.kind === "satellite"
+            ? upperR * 0.75
+            : upperR;
     payloadTopR = r;
     push({
       key: `${payload.id}:payload`,
@@ -268,7 +299,9 @@ export function layoutRocket(config: RocketConfig): RocketLayout {
       variant: payload.top,
       position: [0, y, 0],
       dims: { h: tHeight, r: payloadTopR, r2: payloadTopR, s: 1 },
-      color: payload.topColor ?? (payload.top === "dome" ? "#bfe6ff" : appearance.secondary),
+      color:
+        payload.topColor ??
+        (payload.top === "dome" ? "#bfe6ff" : appearance.secondary),
       color2: appearance.accent,
     });
     labels.push({
@@ -283,9 +316,14 @@ export function layoutRocket(config: RocketConfig): RocketLayout {
 
   if (config.fins && bottom) {
     const fins = config.fins;
-    const offset = config.boosters.length ? Math.PI / Math.max(2, fins.count) : 0;
+    const offset = config.boosters.length
+      ? Math.PI / Math.max(2, fins.count)
+      : 0;
     const span = fins.size * bottom.rBottom * 0.9;
-    const finHeight = Math.min(bottom.stage.height * 0.5, fins.size * bottom.rBottom * 2.2);
+    const finHeight = Math.min(
+      bottom.stage.height * 0.5,
+      fins.size * bottom.rBottom * 2.2,
+    );
     for (let i = 0; i < fins.count; i++) {
       const a = offset + (i / fins.count) * Math.PI * 2;
       push({
@@ -294,7 +332,11 @@ export function layoutRocket(config: RocketConfig): RocketLayout {
         kind: "fin",
         segment: stageSegment(bottom.stage),
         variant: fins.shape,
-        position: [Math.cos(a) * bottom.rBottom * 0.96, 0, Math.sin(a) * bottom.rBottom * 0.96],
+        position: [
+          Math.cos(a) * bottom.rBottom * 0.96,
+          0,
+          Math.sin(a) * bottom.rBottom * 0.96,
+        ],
         rotation: [0, -a, 0],
         dims: { h: finHeight, r: span, r2: 0, s: fins.size },
         color: fins.color ?? appearance.secondary,
@@ -313,35 +355,79 @@ export function layoutRocket(config: RocketConfig): RocketLayout {
         sourceId: legs.id,
         kind: "leg",
         segment: stageSegment(bottom.stage),
-        position: [Math.cos(a) * bottom.rBottom, 3.2 * legs.size, Math.sin(a) * bottom.rBottom],
+        position: [
+          Math.cos(a) * bottom.rBottom,
+          3.2 * legs.size,
+          Math.sin(a) * bottom.rBottom,
+        ],
         rotation: [0, -a, 0],
-        dims: { h: 3.2 * legs.size + drop, r: 2.4 * legs.size, r2: 0, s: legs.size },
+        dims: {
+          h: 3.2 * legs.size + drop,
+          r: 2.4 * legs.size,
+          r2: 0,
+          s: legs.size,
+        },
         color: appearance.secondary,
         color2: appearance.accent,
       });
     }
   }
 
-  const anchors = { top: height, payload: coreTopY + pHeight * 0.5, core: coreTopY * 0.55, bottom: Math.min(coreTopY * 0.18, 6) };
+  const anchors = {
+    top: height,
+    payload: coreTopY + pHeight * 0.5,
+    core: coreTopY * 0.55,
+    bottom: Math.min(coreTopY * 0.18, 6),
+  };
   config.decorativeParts.forEach((decor) => {
-    layoutDecor(decor, anchors[decor.attach], decor.attach, radiusAt, segmentAt, push, appearance, height, payloadTopR);
+    layoutDecor(
+      decor,
+      anchors[decor.attach],
+      decor.attach,
+      radiusAt,
+      segmentAt,
+      push,
+      appearance,
+      height,
+      payloadTopR,
+    );
   });
 
   const minY = Math.min(
     0,
-    ...parts.filter((p) => p.kind === "engine" || p.kind === "leg").map((p) => (p.kind === "leg" ? p.position[1] - p.dims.h : p.position[1])),
+    ...parts
+      .filter((p) => p.kind === "engine" || p.kind === "leg")
+      .map((p) =>
+        p.kind === "leg" ? p.position[1] - p.dims.h : p.position[1],
+      ),
   );
   const coreRadius = Math.max(...stack.map((s) => s.rBottom), 1);
   const extent = Math.max(
     coreRadius,
-    ...parts.filter((p) => p.kind === "booster" || p.kind === "wing" || p.kind === "fin").map((p) => Math.hypot(p.position[0], p.position[2]) + p.dims.r),
+    ...parts
+      .filter(
+        (p) => p.kind === "booster" || p.kind === "wing" || p.kind === "fin",
+      )
+      .map((p) => Math.hypot(p.position[0], p.position[2]) + p.dims.r),
   );
   const segments = Array.from(new Set(parts.map((p) => p.segment)));
 
-  return { parts, labels, nozzles, height, minY, radius: coreRadius, width: extent * 2, segments };
+  return {
+    parts,
+    labels,
+    nozzles,
+    height,
+    minY,
+    radius: coreRadius,
+    width: extent * 2,
+    segments,
+  };
 }
 
-type Push = (part: Omit<PlacedPart, "rotation" | "color2" | "variant"> & Partial<PlacedPart>) => void;
+type Push = (
+  part: Omit<PlacedPart, "rotation" | "color2" | "variant"> &
+    Partial<PlacedPart>,
+) => void;
 
 /** Places boosters in concentric rings around the bottom stage. */
 function layoutBoosters(
@@ -360,9 +446,13 @@ function layoutBoosters(
   while (index < config.boosters.length) {
     const sample = config.boosters[index];
     distance += sample.radius + (ring === 0 ? 0.08 : sample.radius * 0.2);
-    const capacity = Math.max(2, Math.floor((Math.PI * 2 * distance) / (sample.radius * 2.15)));
+    const capacity = Math.max(
+      2,
+      Math.floor((Math.PI * 2 * distance) / (sample.radius * 2.15)),
+    );
     const inRing = Math.min(capacity, config.boosters.length - index);
-    const offset = ring * (Math.PI / Math.max(inRing, 1)) + (inRing === 2 ? 0 : Math.PI / 2);
+    const offset =
+      ring * (Math.PI / Math.max(inRing, 1)) + (inRing === 2 ? 0 : Math.PI / 2);
     for (let i = 0; i < inRing; i++, index++) {
       const booster = config.boosters[index];
       const segment = boosterSegment(booster.id);
@@ -377,7 +467,12 @@ function layoutBoosters(
         kind: "booster",
         segment,
         position: [x, lift, z],
-        dims: { h: booster.height, r: booster.radius, r2: booster.radius, s: ring },
+        dims: {
+          h: booster.height,
+          r: booster.radius,
+          r2: booster.radius,
+          s: ring,
+        },
         color,
         color2: appearance.secondary,
       });
@@ -388,25 +483,39 @@ function layoutBoosters(
         segment,
         variant: booster.top,
         position: [x, lift + booster.height, z],
-        dims: { h: booster.radius * (booster.top === "blunt" ? 1 : 2.6), r: booster.radius, r2: booster.radius, s: 1 },
+        dims: {
+          h: booster.radius * (booster.top === "blunt" ? 1 : 2.6),
+          r: booster.radius,
+          r2: booster.radius,
+          s: 1,
+        },
         color: appearance.secondary,
         color2: appearance.accent,
       });
-      const inward = ring === 0 ? distance - booster.radius - core : booster.radius * 0.5;
+      const inward =
+        ring === 0 ? distance - booster.radius - core : booster.radius * 0.5;
       [0.25, 0.8].forEach((t, strutIndex) => {
         push({
           key: `${booster.id}:strut:${strutIndex}`,
           sourceId: booster.id,
           kind: "strut",
           segment,
-          position: [Math.cos(a) * (distance - booster.radius), lift + booster.height * t, Math.sin(a) * (distance - booster.radius)],
+          position: [
+            Math.cos(a) * (distance - booster.radius),
+            lift + booster.height * t,
+            Math.sin(a) * (distance - booster.radius),
+          ],
           rotation: [0, -a, 0],
           dims: { h: Math.max(0.15, inward + 0.2), r: 0.14, r2: 0.14, s: 1 },
           color: appearance.secondary,
         });
       });
       const bell = bellHeight(booster.engine);
-      clusterPositions(booster.engine.count, booster.radius, booster.engine.size).forEach(([ex, ez], engineIndex) => {
+      clusterPositions(
+        booster.engine.count,
+        booster.radius,
+        booster.engine.size,
+      ).forEach(([ex, ez], engineIndex) => {
         push({
           key: `${booster.id}:engine:${engineIndex}`,
           sourceId: booster.id,
@@ -414,11 +523,21 @@ function layoutBoosters(
           segment,
           variant: booster.engine.style,
           position: [x + ex, lift - bell + 0.05, z + ez],
-          dims: { h: bell, r: booster.engine.size * 0.72, r2: booster.engine.size * 0.3, s: booster.engine.power },
+          dims: {
+            h: bell,
+            r: booster.engine.size * 0.72,
+            r2: booster.engine.size * 0.3,
+            s: booster.engine.power,
+          },
           color: booster.engine.color,
           color2: appearance.glow,
         });
-        nozzles.push({ segment, position: [x + ex, lift - bell, z + ez], radius: booster.engine.size * 0.7, power: booster.engine.power });
+        nozzles.push({
+          segment,
+          position: [x + ex, lift - bell, z + ez],
+          radius: booster.engine.size * 0.7,
+          power: booster.engine.power,
+        });
       });
     }
     distance += sample.radius;
@@ -449,8 +568,14 @@ function layoutDecor(
   const color = decor.color ?? appearance.accent;
   const s = decor.size;
   const onTop = attach === "top";
-  const segment = onTop || attach === "payload" ? UPPER_SEGMENT : segmentAt(anchorY);
-  const base = { sourceId: decor.id, segment, color, color2: appearance.secondary };
+  const segment =
+    onTop || attach === "payload" ? UPPER_SEGMENT : segmentAt(anchorY);
+  const base = {
+    sourceId: decor.id,
+    segment,
+    color,
+    color2: appearance.secondary,
+  };
   const r = onTop ? topRadius * 0.3 : radiusAt(anchorY);
   const around = (n: number, fn: (a: number, i: number) => void) => {
     for (let i = 0; i < n; i++) fn((i / n) * Math.PI * 2, i);
@@ -460,22 +585,54 @@ function layoutDecor(
     case "antenna":
       around(decor.count, (a, i) => {
         const pos: [number, number, number] = onTop
-          ? [Math.cos(a) * r * (decor.count > 1 ? 1 : 0), height - 0.3, Math.sin(a) * r * (decor.count > 1 ? 1 : 0)]
+          ? [
+              Math.cos(a) * r * (decor.count > 1 ? 1 : 0),
+              height - 0.3,
+              Math.sin(a) * r * (decor.count > 1 ? 1 : 0),
+            ]
           : [Math.cos(a) * r, anchorY, Math.sin(a) * r];
-        push({ ...base, key: `${decor.id}:${i}`, kind: "antenna", position: pos, rotation: onTop ? [0, 0, 0] : [0, -a, -Math.PI / 2.4], dims: { h: 4 * s, r: 0.08 * s, r2: 0, s } });
+        push({
+          ...base,
+          key: `${decor.id}:${i}`,
+          kind: "antenna",
+          position: pos,
+          rotation: onTop ? [0, 0, 0] : [0, -a, -Math.PI / 2.4],
+          dims: { h: 4 * s, r: 0.08 * s, r2: 0, s },
+        });
       });
       break;
     case "ring":
       for (let i = 0; i < decor.count; i++) {
-        const ry = onTop ? height - 1 - i * 1.2 : anchorY + (i - (decor.count - 1) / 2) * 2.2 * s;
-        push({ ...base, key: `${decor.id}:${i}`, kind: "ring", position: [0, ry, 0], dims: { h: 0.3 * s, r: radiusAt(ry) + 0.25 * s, r2: 0, s } });
+        const ry = onTop
+          ? height - 1 - i * 1.2
+          : anchorY + (i - (decor.count - 1) / 2) * 2.2 * s;
+        push({
+          ...base,
+          key: `${decor.id}:${i}`,
+          kind: "ring",
+          position: [0, ry, 0],
+          dims: { h: 0.3 * s, r: radiusAt(ry) + 0.25 * s, r2: 0, s },
+        });
       }
       break;
     case "solarPanels":
       for (let i = 0; i < decor.count; i++) {
         [0, Math.PI].forEach((a, side) => {
           const py = anchorY + (i - (decor.count - 1) / 2) * 2.6 * s;
-          push({ ...base, key: `${decor.id}:${i}:${side}`, kind: "solarPanel", position: [Math.cos(a + i) * radiusAt(py), py, Math.sin(a + i) * radiusAt(py)], rotation: [0, -(a + i), 0], dims: { h: 1.8 * s, r: 5 * s, r2: 0, s }, color: "#1b2a4a", color2: color });
+          push({
+            ...base,
+            key: `${decor.id}:${i}:${side}`,
+            kind: "solarPanel",
+            position: [
+              Math.cos(a + i) * radiusAt(py),
+              py,
+              Math.sin(a + i) * radiusAt(py),
+            ],
+            rotation: [0, -(a + i), 0],
+            dims: { h: 1.8 * s, r: 5 * s, r2: 0, s },
+            color: "#1b2a4a",
+            color2: color,
+          });
         });
       }
       break;
@@ -483,7 +640,18 @@ function layoutDecor(
       for (let row = 0; row < Math.max(1, Math.ceil(decor.count / 3)); row++) {
         const py = anchorY + row * 2 * s;
         around(8, (a, i) => {
-          push({ ...base, key: `${decor.id}:${row}:${i}`, kind: "spike", position: [Math.cos(a) * radiusAt(py), py, Math.sin(a) * radiusAt(py)], rotation: [0, -a, -Math.PI / 2], dims: { h: 1.6 * s, r: 0.35 * s, r2: 0, s } });
+          push({
+            ...base,
+            key: `${decor.id}:${row}:${i}`,
+            kind: "spike",
+            position: [
+              Math.cos(a) * radiusAt(py),
+              py,
+              Math.sin(a) * radiusAt(py),
+            ],
+            rotation: [0, -a, -Math.PI / 2],
+            dims: { h: 1.6 * s, r: 0.35 * s, r2: 0, s },
+          });
         });
       }
       break;
@@ -491,17 +659,45 @@ function layoutDecor(
       for (let row = 0; row < decor.count; row++) {
         const py = anchorY + row * 1.6 - decor.count * 0.8;
         around(10, (a, i) => {
-          push({ ...base, key: `${decor.id}:${row}:${i}`, kind: "light", position: [Math.cos(a) * radiusAt(py), py, Math.sin(a) * radiusAt(py)], dims: { h: 0, r: 0.22 * s, r2: 0, s: row * 10 + i } });
+          push({
+            ...base,
+            key: `${decor.id}:${row}:${i}`,
+            kind: "light",
+            position: [
+              Math.cos(a) * radiusAt(py),
+              py,
+              Math.sin(a) * radiusAt(py),
+            ],
+            dims: { h: 0, r: 0.22 * s, r2: 0, s: row * 10 + i },
+          });
         });
       }
       break;
     case "wings":
       [0, Math.PI].forEach((a, i) => {
-        push({ ...base, key: `${decor.id}:${i}`, kind: "wing", position: [Math.cos(a) * r * 0.95, anchorY - 3 * s, Math.sin(a) * r * 0.95], rotation: [0, -a, 0], dims: { h: 7 * s, r: 6 * s, r2: 0, s } });
+        push({
+          ...base,
+          key: `${decor.id}:${i}`,
+          kind: "wing",
+          position: [
+            Math.cos(a) * r * 0.95,
+            anchorY - 3 * s,
+            Math.sin(a) * r * 0.95,
+          ],
+          rotation: [0, -a, 0],
+          dims: { h: 7 * s, r: 6 * s, r2: 0, s },
+        });
       });
       break;
     case "flag":
-      push({ ...base, key: `${decor.id}:0`, kind: "flag", position: onTop ? [0, height - 0.2, 0] : [r, anchorY, 0], rotation: onTop ? [0, 0, 0] : [0, 0, -Math.PI / 2.5], dims: { h: 4 * s, r: 1.8 * s, r2: 0, s } });
+      push({
+        ...base,
+        key: `${decor.id}:0`,
+        kind: "flag",
+        position: onTop ? [0, height - 0.2, 0] : [r, anchorY, 0],
+        rotation: onTop ? [0, 0, 0] : [0, 0, -Math.PI / 2.5],
+        dims: { h: 4 * s, r: 1.8 * s, r2: 0, s },
+      });
       break;
     case "googlyEyes":
       for (let i = 0; i < decor.count; i++) {
@@ -510,7 +706,21 @@ function layoutDecor(
           const rr = onTop ? topRadius * 0.9 : radiusAt(py);
           const ey = onTop ? height * 0.93 - i * 1.5 : py;
           const phi = a + Math.PI / 2;
-          push({ ...base, key: `${decor.id}:${i}:${side}`, kind: "googlyEye", position: [Math.cos(phi) * rr, ey, Math.sin(phi) * rr], rotation: [0, -phi + Math.PI / 2, 0], dims: { h: 0, r: 0.8 * s * Math.max(0.6, rr / 2.4), r2: 0, s: i + side }, color: "#ffffff", color2: "#0b0b0c" });
+          push({
+            ...base,
+            key: `${decor.id}:${i}:${side}`,
+            kind: "googlyEye",
+            position: [Math.cos(phi) * rr, ey, Math.sin(phi) * rr],
+            rotation: [0, -phi + Math.PI / 2, 0],
+            dims: {
+              h: 0,
+              r: 0.8 * s * Math.max(0.6, rr / 2.4),
+              r2: 0,
+              s: i + side,
+            },
+            color: "#ffffff",
+            color2: "#0b0b0c",
+          });
         });
       }
       break;
@@ -520,7 +730,16 @@ function layoutDecor(
         const pos: [number, number, number] = onTop
           ? [0, height - 0.1 + i * 2.6 * s, 0]
           : [Math.cos(a) * (r + 0.9 * s), anchorY, Math.sin(a) * (r + 0.9 * s)];
-        push({ ...base, key: `${decor.id}:${i}`, kind: "duck", position: pos, rotation: [0, -a + Math.PI / 2, 0], dims: { h: 0, r: s, r2: 0, s }, color: decor.color ?? "#ffd21f", color2: "#ff8a00" });
+        push({
+          ...base,
+          key: `${decor.id}:${i}`,
+          kind: "duck",
+          position: pos,
+          rotation: [0, -a + Math.PI / 2, 0],
+          dims: { h: 0, r: s, r2: 0, s },
+          color: decor.color ?? "#ffd21f",
+          color2: "#ff8a00",
+        });
       }
       break;
     case "windows":
@@ -528,18 +747,43 @@ function layoutDecor(
         const a = Math.PI / 2 + (i - (decor.count - 1) / 2) * 0.42;
         const py = anchorY;
         const rr = radiusAt(py);
-        push({ ...base, key: `${decor.id}:${i}`, kind: "window", position: [Math.cos(a) * rr, py, Math.sin(a) * rr], rotation: [0, -a + Math.PI / 2, 0], dims: { h: 0, r: 0.45 * s, r2: 0, s }, color: "#0c1a24", color2: appearance.glow });
+        push({
+          ...base,
+          key: `${decor.id}:${i}`,
+          kind: "window",
+          position: [Math.cos(a) * rr, py, Math.sin(a) * rr],
+          rotation: [0, -a + Math.PI / 2, 0],
+          dims: { h: 0, r: 0.45 * s, r2: 0, s },
+          color: "#0c1a24",
+          color2: appearance.glow,
+        });
       }
       break;
     case "tank":
       for (let i = 0; i < decor.count; i++) {
         const a = Math.PI * 0.25 + (i / decor.count) * Math.PI * 2;
         const rr = radiusAt(anchorY);
-        push({ ...base, key: `${decor.id}:${i}`, kind: "tank", position: [Math.cos(a) * (rr + 0.7 * s), anchorY - 3 * s, Math.sin(a) * (rr + 0.7 * s)], dims: { h: 6 * s, r: 0.7 * s, r2: 0, s } });
+        push({
+          ...base,
+          key: `${decor.id}:${i}`,
+          kind: "tank",
+          position: [
+            Math.cos(a) * (rr + 0.7 * s),
+            anchorY - 3 * s,
+            Math.sin(a) * (rr + 0.7 * s),
+          ],
+          dims: { h: 6 * s, r: 0.7 * s, r2: 0, s },
+        });
       }
       break;
     case "propeller":
-      push({ ...base, key: `${decor.id}:0`, kind: "propeller", position: onTop ? [0, height, 0] : [0, anchorY, 0], dims: { h: 0, r: 3.5 * s, r2: 0, s } });
+      push({
+        ...base,
+        key: `${decor.id}:0`,
+        kind: "propeller",
+        position: onTop ? [0, height, 0] : [0, anchorY, 0],
+        dims: { h: 0, r: 3.5 * s, r2: 0, s },
+      });
       break;
   }
 }

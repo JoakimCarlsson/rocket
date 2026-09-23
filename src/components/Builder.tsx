@@ -1,34 +1,48 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import { AnimatePresence, motion } from "motion/react";
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { LaunchCue, Telemetry } from "@/components/three/LaunchScene";
 import { BrandRail, Wordmark } from "@/components/ui/BrandRail";
 import { Icon } from "@/components/ui/Icon";
-import { AchievementToasts, LaunchHUD, MissionReportCard, TransitionOverlay } from "@/components/ui/LaunchOverlays";
+import {
+  AchievementToasts,
+  LaunchHUD,
+  MissionReportCard,
+  TransitionOverlay,
+} from "@/components/ui/LaunchOverlays";
 import { PromptDock } from "@/components/ui/PromptDock";
 import { ShareDialog } from "@/components/ui/ShareDialog";
 import { CompactStats, StatsPanel } from "@/components/ui/StatsPanel";
 import { useIsMobile } from "@/hooks/useMediaQuery";
-import { loadMuted, loadSession, saveMuted, takeHandOff } from "@/lib/persistence";
-import { useBuilder } from "@/lib/store";
+import {
+  loadMuted,
+  loadSession,
+  saveMuted,
+  takeHandOff,
+} from "@/lib/persistence";
 import { sound } from "@/lib/sound";
+import { useBuilder } from "@/lib/store";
 
-const Viewport = dynamic(() => import("@/components/three/Viewport").then((m) => m.Viewport), { ssr: false });
+const Viewport = dynamic(
+  () => import("@/components/three/Viewport").then((m) => m.Viewport),
+  { ssr: false },
+);
 
-const CUE_SOUNDS: Partial<Record<LaunchCue, Parameters<typeof sound.play>[0]>> = {
-  "count:3": "beep",
-  "count:2": "beep",
-  "count:1": "beep",
-  ignition: "ignition",
-  liftoff: "liftoff",
-  booster_sep: "separation",
-  stage_sep: "separation",
-  booster_fail: "separation",
-  payload_pop: "separation",
-  explode: "explosion",
-};
+const CUE_SOUNDS: Partial<Record<LaunchCue, Parameters<typeof sound.play>[0]>> =
+  {
+    "count:3": "beep",
+    "count:2": "beep",
+    "count:1": "beep",
+    ignition: "ignition",
+    liftoff: "liftoff",
+    booster_sep: "separation",
+    stage_sep: "separation",
+    booster_fail: "separation",
+    payload_pop: "separation",
+    explode: "explosion",
+  };
 
 /** The main construction-bay experience. */
 export function Builder() {
@@ -47,22 +61,28 @@ export function Builder() {
     const incoming = takeHandOff();
     const saved = loadSession();
     if (incoming) {
-      useBuilder.getState().hydrate(saved?.rocket ?? incoming.rocket, saved?.messages ?? []);
-      useBuilder.getState().loadRocket(incoming.rocket, `Loaded ${incoming.rocket.name}${incoming.source ? ` from ${incoming.source}` : ""}. Tell me how to make it worse.`, incoming.prompt);
+      useBuilder
+        .getState()
+        .hydrate(saved?.rocket ?? incoming.rocket, saved?.messages ?? []);
+      useBuilder
+        .getState()
+        .loadRocket(
+          incoming.rocket,
+          `Loaded ${incoming.rocket.name}${incoming.source ? ` from ${incoming.source}` : ""}. Tell me how to make it worse.`,
+          incoming.prompt,
+        );
     } else if (saved) {
       useBuilder.getState().hydrate(saved.rocket, saved.messages);
     } else {
       useBuilder.getState().hydrate(useBuilder.getState().rocket, []);
     }
     const mutedPref = loadMuted();
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMuted(mutedPref);
     sound.setMuted(mutedPref);
     void useBuilder.getState().detectProvider();
   }, []);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (isMobile) setLabels(false);
   }, [isMobile]);
 
@@ -99,9 +119,11 @@ export function Builder() {
   };
 
   const inBuild = state.mode === "build";
-  const lastAi = [...state.messages].reverse().find((m) => m.role === "ai")?.text ?? null;
+  const lastAi =
+    [...state.messages].reverse().find((m) => m.role === "ai")?.text ?? null;
   const firstTime = !state.messages.some((m) => m.role === "user");
-  const scene = state.mode === "launch" || state.mode === "report" ? "launch" : "bay";
+  const scene =
+    state.mode === "launch" || state.mode === "report" ? "launch" : "bay";
 
   return (
     <main className="fixed inset-0 overflow-hidden bg-bg">
@@ -120,17 +142,29 @@ export function Builder() {
 
       <AnimatePresence>
         {inBuild && (
-          <motion.div key="build-ui" className="pointer-events-none fixed inset-0 z-20" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+          <motion.div
+            key="build-ui"
+            className="pointer-events-none fixed inset-0 z-20"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
             {isMobile ? (
               <div className="flex h-full flex-col p-3 pt-[max(12px,env(safe-area-inset-top))] pb-[max(12px,env(safe-area-inset-bottom))]">
                 <div className="pointer-events-auto flex items-center justify-between">
                   <Wordmark small />
-                  <button onClick={() => setMenuOpen(true)} className="panel grid h-9 w-9 place-items-center rounded-lg text-muted" aria-label="Menu">
+                  <button
+                    onClick={() => setMenuOpen(true)}
+                    className="panel grid h-9 w-9 place-items-center rounded-lg text-muted"
+                    aria-label="Menu"
+                  >
                     <Icon name="menu" size={16} />
                   </button>
                 </div>
                 <div className="mt-2">
-                  <div className="truncate font-display text-[15px] font-bold">{state.rocket.name}</div>
+                  <div className="truncate font-display text-[15px] font-bold">
+                    {state.rocket.name}
+                  </div>
                 </div>
                 <div className="mt-2">
                   <CompactStats rocket={state.rocket} />
@@ -169,7 +203,10 @@ export function Builder() {
                   />
                 </div>
                 <div className="absolute top-6 right-6">
-                  <StatsPanel rocket={state.rocket} provider={state.providerLabel} />
+                  <StatsPanel
+                    rocket={state.rocket}
+                    provider={state.providerLabel}
+                  />
                 </div>
                 <div className="absolute right-[296px] bottom-6 left-[296px]">
                   <PromptDock
@@ -191,8 +228,20 @@ export function Builder() {
         )}
       </AnimatePresence>
 
-      {state.mode === "transition" && <TransitionOverlay name={state.rocket.name} onDone={state.beginFlight} />}
-      {state.mode === "launch" && state.plan && <LaunchHUD cue={cue} telemetry={telemetry} plan={state.plan} onSkip={state.finishLaunch} />}
+      {state.mode === "transition" && (
+        <TransitionOverlay
+          name={state.rocket.name}
+          onDone={state.beginFlight}
+        />
+      )}
+      {state.mode === "launch" && state.plan && (
+        <LaunchHUD
+          cue={cue}
+          telemetry={telemetry}
+          plan={state.plan}
+          onSkip={state.finishLaunch}
+        />
+      )}
       {state.mode === "report" && state.plan && (
         <MissionReportCard
           plan={state.plan}
@@ -210,12 +259,31 @@ export function Builder() {
       )}
 
       <AchievementToasts ids={state.toasts} onDismiss={state.dismissToast} />
-      {sharing && <ShareDialog rocket={state.rocket} prompt={state.lastPrompt} attempt={state.mode === "report" ? state.attempt : null} onClose={() => setSharing(false)} />}
+      {sharing && (
+        <ShareDialog
+          rocket={state.rocket}
+          prompt={state.lastPrompt}
+          attempt={state.mode === "report" ? state.attempt : null}
+          onClose={() => setSharing(false)}
+        />
+      )}
 
       <AnimatePresence>
         {menuOpen && isMobile && (
-          <motion.div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setMenuOpen(false)}>
-            <motion.div initial={{ x: -40 }} animate={{ x: 0 }} exit={{ x: -40 }} onClick={(e) => e.stopPropagation()} className="panel absolute top-0 bottom-0 left-0 w-[280px] p-5 pt-[max(20px,env(safe-area-inset-top))]">
+          <motion.div
+            className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setMenuOpen(false)}
+          >
+            <motion.div
+              initial={{ x: -40 }}
+              animate={{ x: 0 }}
+              exit={{ x: -40 }}
+              onClick={(e) => e.stopPropagation()}
+              className="panel absolute top-0 bottom-0 left-0 w-[280px] p-5 pt-[max(20px,env(safe-area-inset-top))]"
+            >
               <BrandRail
                 name={state.rocket.name}
                 messages={state.messages}

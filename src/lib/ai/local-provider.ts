@@ -1,5 +1,5 @@
 import { createRng, hashString } from "../rocket/random";
-import { validateModelOutput, type AIResult } from "./actions";
+import { type AIResult, validateModelOutput } from "./actions";
 import { interpretLocally } from "./local-interpreter";
 import type { AIProvider, InterpretRequest } from "./provider";
 
@@ -13,11 +13,18 @@ export class LocalProvider implements AIProvider {
 
   /** Interprets the instruction with local rules and validates the result like any model output. */
   async interpret(request: InterpretRequest): Promise<AIResult> {
-    const seed = hashString(`${request.instruction}|${request.rocket.seed}|${request.history.length}|${Date.now()}`);
-    const raw = interpretLocally(request.instruction, request.rocket, createRng(seed), {
-      mode: request.mode,
-      mission: request.mission,
-    });
+    const seed = hashString(
+      `${request.instruction}|${request.rocket.seed}|${request.history.length}|${Date.now()}`,
+    );
+    const raw = interpretLocally(
+      request.instruction,
+      request.rocket,
+      createRng(seed),
+      {
+        mode: request.mode,
+        mission: request.mission,
+      },
+    );
     await new Promise((resolve) => setTimeout(resolve, THINKING_MS));
     return validateModelOutput(raw, this.id);
   }

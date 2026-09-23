@@ -13,7 +13,10 @@ export interface SharePayload {
 function compact(value: unknown): unknown {
   if (typeof value === "number") return Math.round(value * 100) / 100;
   if (Array.isArray(value)) return value.map(compact);
-  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, compact(v)]));
+  if (value && typeof value === "object")
+    return Object.fromEntries(
+      Object.entries(value).map(([k, v]) => [k, compact(v)]),
+    );
   return value;
 }
 
@@ -21,19 +24,29 @@ function compact(value: unknown): unknown {
 function toBase64Url(bytes: Uint8Array): string {
   let binary = "";
   bytes.forEach((b) => (binary += String.fromCharCode(b)));
-  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
 }
 
 /** Decodes URL-safe base64 into bytes. */
 function fromBase64Url(value: string): Uint8Array {
-  const padded = value.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((value.length + 3) % 4);
+  const padded =
+    value.replace(/-/g, "+").replace(/_/g, "/") +
+    "===".slice((value.length + 3) % 4);
   const binary = atob(padded);
   return Uint8Array.from(binary, (c) => c.charCodeAt(0));
 }
 
 /** Serialises a rocket into a deterministic id usable in `/r/[id]`. */
 export function encodeShare(payload: SharePayload): string {
-  const json = JSON.stringify({ r: compact(payload.rocket), p: payload.prompt.slice(0, 200), c: payload.creator.slice(0, 32), a: payload.attempt });
+  const json = JSON.stringify({
+    r: compact(payload.rocket),
+    p: payload.prompt.slice(0, 200),
+    c: payload.creator.slice(0, 32),
+    a: payload.attempt,
+  });
   return toBase64Url(new TextEncoder().encode(json));
 }
 

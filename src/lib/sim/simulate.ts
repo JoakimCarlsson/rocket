@@ -1,6 +1,13 @@
 import type { MissionSummary } from "../ai/provider";
+import {
+  createRng,
+  hashString,
+  pick,
+  type Rng,
+  randInt,
+  randRange,
+} from "../rocket/random";
 import { computeStats, thrustToWeight } from "../rocket/stats";
-import { createRng, hashString, pick, randInt, randRange, type Rng } from "../rocket/random";
 import type { RocketConfig, SimulatedStats } from "../rocket/types";
 
 /** Every way a game launch can end. */
@@ -72,7 +79,10 @@ function weighted<T extends string>(rng: Rng, weights: Record<T, number>): T {
  * Decides what happens using deliberately silly game rules. Reliability and chaos
  * skew the dice; nothing here models real vehicle behaviour.
  */
-export function simulateLaunch(config: RocketConfig, attempt: number): LaunchPlan {
+export function simulateLaunch(
+  config: RocketConfig,
+  attempt: number,
+): LaunchPlan {
   const seed = hashString(`${JSON.stringify(config)}#${attempt}`);
   const rng = createRng(seed);
   const stats = computeStats(config);
@@ -84,34 +94,62 @@ export function simulateLaunch(config: RocketConfig, attempt: number): LaunchPla
   if (twr < 0.8) {
     outcome = rng() < 0.35 + c / 250 ? "explode" : "fizzle";
   } else {
-    const success = Math.pow(r, 1.7) / 100;
+    const success = r ** 1.7 / 100;
     const pickOutcome = weighted(rng, {
       success,
       explode: (100 - r) * 0.12 + c * 0.05,
       spin: c * 0.035 + Math.abs(config.tilt) * 0.06 + (config.fins ? 0 : 1.6),
-      booster_failure: config.boosters.length ? config.boosters.length * 0.22 + (100 - r) * 0.03 : 0,
-      stage_malfunction: config.stages.length > 1 ? (config.stages.length - 1) * 0.7 + (100 - r) * 0.025 : 0,
+      booster_failure: config.boosters.length
+        ? config.boosters.length * 0.22 + (100 - r) * 0.03
+        : 0,
+      stage_malfunction:
+        config.stages.length > 1
+          ? (config.stages.length - 1) * 0.7 + (100 - r) * 0.025
+          : 0,
       payload_early: 0.7 + c * 0.018,
       against_all_odds: r < 45 ? 2.2 + c * 0.03 : 0,
     });
-    outcome = pickOutcome === "success" ? successOutcome(config, stats, rng) : pickOutcome;
+    outcome =
+      pickOutcome === "success"
+        ? successOutcome(config, stats, rng)
+        : pickOutcome;
   }
 
   const events = buildEvents(config, outcome, rng);
-  const duration = Math.max(...events.map((e) => e.t)) + (outcome === "explode" || outcome === "fizzle" ? 3.5 : 2.5);
+  const duration =
+    Math.max(...events.map((e) => e.t)) +
+    (outcome === "explode" || outcome === "fizzle" ? 3.5 : 2.5);
   const altitudeKm = altitudeFor(outcome, events, rng);
-  return { seed, outcome, duration, events, altitudeKm, report: buildReport(config, stats, outcome, altitudeKm, rng), stats };
+  return {
+    seed,
+    outcome,
+    duration,
+    events,
+    altitudeKm,
+    report: buildReport(config, stats, outcome, altitudeKm, rng),
+    stats,
+  };
 }
 
 /** Upgrades a plain success to a destination-specific one when the fictional range allows. */
-function successOutcome(config: RocketConfig, stats: SimulatedStats, rng: Rng): Outcome {
-  if (config.destination === "moon" && (stats.range > 40000 || rng() < 0.45)) return "lunar";
-  if (config.destination === "mars" && (stats.range > 150000 || rng() < 0.3)) return "mars";
+function successOutcome(
+  config: RocketConfig,
+  stats: SimulatedStats,
+  rng: Rng,
+): Outcome {
+  if (config.destination === "moon" && (stats.range > 40000 || rng() < 0.45))
+    return "lunar";
+  if (config.destination === "mars" && (stats.range > 150000 || rng() < 0.3))
+    return "mars";
   return "orbit";
 }
 
 /** Lays out the animation timeline for an outcome. */
-function buildEvents(config: RocketConfig, outcome: Outcome, rng: Rng): LaunchEvent[] {
+function buildEvents(
+  config: RocketConfig,
+  outcome: Outcome,
+  rng: Rng,
+): LaunchEvent[] {
   const events: LaunchEvent[] = [];
   if (outcome === "fizzle") {
     events.push({ t: 1.5, type: "wobble" }, { t: 4.2, type: "tip_over" });
@@ -121,8 +159,16 @@ function buildEvents(config: RocketConfig, outcome: Outcome, rng: Rng): LaunchEv
   events.push({ t: 1.2, type: "liftoff" });
   let t = 5.2;
   const hasBoosters = config.boosters.length > 0;
-  const failBooster = outcome === "booster_failure" && hasBoosters ? pick(rng, config.boosters) : null;
-  if (failBooster) events.push({ t: randRange(rng, 2.6, 3.6), type: "booster_fail", boosterId: failBooster.id });
+  const failBooster =
+    outcome === "booster_failure" && hasBoosters
+      ? pick(rng, config.boosters)
+      : null;
+  if (failBooster)
+    events.push({
+      t: randRange(rng, 2.6, 3.6),
+      type: "booster_fail",
+      boosterId: failBooster.id,
+    });
   if (outcome === "against_all_odds") events.push({ t: 2.4, type: "wobble" });
 
   const endEarly: Partial<Record<Outcome, number>> = {
@@ -137,19 +183,30 @@ function buildEvents(config: RocketConfig, outcome: Outcome, rng: Rng): LaunchEv
     t += 2.8;
   }
   const lowerStages = config.stages.slice(0, -1);
-  const stallIndex = outcome === "stage_malfunction" ? randInt(rng, 0, Math.max(0, lowerStages.length - 1)) : -1;
+  const stallIndex =
+    outcome === "stage_malfunction"
+      ? randInt(rng, 0, Math.max(0, lowerStages.length - 1))
+      : -1;
   for (let i = 0; i < lowerStages.length; i++) {
     if (t >= cutoff) break;
     events.push({ t, type: "stage_sep", stageId: lowerStages[i].id });
     if (i === stallIndex) {
-      events.push({ t: t + 1.2, type: "stall", stageId: config.stages[i + 1].id });
+      events.push({
+        t: t + 1.2,
+        type: "stall",
+        stageId: config.stages[i + 1].id,
+      });
       if (rng() < 0.5) events.push({ t: t + 4.5, type: "explode" });
       return events;
     }
     t += 3;
   }
   if (outcome === "stage_malfunction") {
-    events.push({ t: t + 0.5, type: "stall", stageId: config.stages[config.stages.length - 1].id });
+    events.push({
+      t: t + 0.5,
+      type: "stall",
+      stageId: config.stages[config.stages.length - 1].id,
+    });
     return events;
   }
 
@@ -173,7 +230,11 @@ function buildEvents(config: RocketConfig, outcome: Outcome, rng: Rng): LaunchEv
 }
 
 /** Picks a fictional peak altitude for the report. */
-function altitudeFor(outcome: Outcome, events: LaunchEvent[], rng: Rng): number {
+function altitudeFor(
+  outcome: Outcome,
+  events: LaunchEvent[],
+  rng: Rng,
+): number {
   const explodeAt = events.find((e) => e.type === "explode")?.t;
   switch (outcome) {
     case "orbit":
@@ -186,7 +247,9 @@ function altitudeFor(outcome: Outcome, events: LaunchEvent[], rng: Rng): number 
     case "fizzle":
       return explodeAt ? 0.004 : 0.002;
     case "explode":
-      return Math.round((explodeAt ?? 3) * (explodeAt ?? 3) * randRange(rng, 0.6, 1.4));
+      return Math.round(
+        (explodeAt ?? 3) * (explodeAt ?? 3) * randRange(rng, 0.6, 1.4),
+      );
     case "spin":
       return randInt(rng, 12, explodeAt ? 60 : 140);
     case "booster_failure":
@@ -219,7 +282,13 @@ export function formatAltitude(km: number): string {
 }
 
 /** Builds the mission report card. */
-function buildReport(config: RocketConfig, stats: SimulatedStats, outcome: Outcome, altitudeKm: number, rng: Rng): MissionReport {
+function buildReport(
+  config: RocketConfig,
+  stats: SimulatedStats,
+  outcome: Outcome,
+  altitudeKm: number,
+  rng: Rng,
+): MissionReport {
   const [headline, grade] = HEADLINES[outcome];
   const crewed = config.payload.crew > 0;
   const payload: Record<Outcome, string[]> = {
@@ -228,7 +297,10 @@ function buildReport(config: RocketConfig, stats: SimulatedStats, outcome: Outco
     mars: ["Delivered. Eventually.", "On Mars. Probably."],
     against_all_odds: ["Somehow intact", "Fine, against all reason"],
     booster_failure: ["Intact, rattled", "Mostly where it should be"],
-    payload_early: ["Deployed early. Somewhere.", "Released at the wrong altitude"],
+    payload_early: [
+      "Deployed early. Somewhere.",
+      "Released at the wrong altitude",
+    ],
     spin: ["Somehow intact", "Extremely well mixed"],
     stage_malfunction: ["In the ocean", "Returned to Earth prematurely"],
     explode: ["Scattered artistically", "Distributed across the county"],
@@ -247,11 +319,30 @@ function buildReport(config: RocketConfig, stats: SimulatedStats, outcome: Outco
     fizzle: ["Embarrassed", "Went home early"],
   };
   const succeeded = grade === "success";
-  const recovery = config.legs && succeeded ? pick(rng, ["Landed! (mostly)", "Landed on the third try"]) : pick(rng, ["Absolutely not", "Not even a little", "Some pieces, from the ocean"]);
+  const recovery =
+    config.legs && succeeded
+      ? pick(rng, ["Landed! (mostly)", "Landed on the third try"])
+      : pick(rng, [
+          "Absolutely not",
+          "Not even a little",
+          "Some pieces, from the ocean",
+        ]);
   const quips: Record<MissionReport["grade"], string[]> = {
-    success: ["The engineers are pretending they expected this.", "Mission control is high-fiving nervously.", "Nobody is more surprised than me."],
-    partial: ["We're calling this a success in the press release.", "The data is 'interesting'.", "Some of it went to space. That counts."],
-    failure: ["On the bright side, excellent footage.", "We learned a lot. Mostly about fire.", "Let's call it a very loud test."],
+    success: [
+      "The engineers are pretending they expected this.",
+      "Mission control is high-fiving nervously.",
+      "Nobody is more surprised than me.",
+    ],
+    partial: [
+      "We're calling this a success in the press release.",
+      "The data is 'interesting'.",
+      "Some of it went to space. That counts.",
+    ],
+    failure: [
+      "On the bright side, excellent footage.",
+      "We learned a lot. Mostly about fire.",
+      "Let's call it a very loud test.",
+    ],
   };
   return {
     headline: `MISSION: ${headline}`,
@@ -261,7 +352,10 @@ function buildReport(config: RocketConfig, stats: SimulatedStats, outcome: Outco
     rows: [
       { label: "ALTITUDE", value: formatAltitude(altitudeKm) },
       { label: "PAYLOAD", value: pick(rng, payload[outcome]) },
-      { label: "CREW STATUS", value: crewed ? pick(rng, crew[outcome]) : "No crew. Smart." },
+      {
+        label: "CREW STATUS",
+        value: crewed ? pick(rng, crew[outcome]) : "No crew. Smart.",
+      },
       { label: "VEHICLE RECOVERY", value: recovery },
       { label: "CHAOS RATING", value: `${stats.chaos}/100` },
     ],
@@ -269,13 +363,19 @@ function buildReport(config: RocketConfig, stats: SimulatedStats, outcome: Outco
 }
 
 /** Summarises a launch for the AI repair prompt. */
-export function summarizeMission(config: RocketConfig, plan: LaunchPlan): MissionSummary {
+export function summarizeMission(
+  config: RocketConfig,
+  plan: LaunchPlan,
+): MissionSummary {
   const problems: string[] = [];
-  if (plan.stats.reliability < 50) problems.push(`fictional reliability ${plan.stats.reliability}%`);
+  if (plan.stats.reliability < 50)
+    problems.push(`fictional reliability ${plan.stats.reliability}%`);
   if (plan.stats.chaos > 50) problems.push(`chaos ${plan.stats.chaos}/100`);
-  if (config.boosters.length > 6) problems.push(`${config.boosters.length} boosters`);
+  if (config.boosters.length > 6)
+    problems.push(`${config.boosters.length} boosters`);
   if (config.tilt) problems.push(`mounted at ${config.tilt} degrees`);
   if (!config.fins) problems.push("no fins");
-  if (thrustToWeight(plan.stats) < 1) problems.push("not enough fictional thrust to lift off");
+  if (thrustToWeight(plan.stats) < 1)
+    problems.push("not enough fictional thrust to lift off");
   return { outcome: plan.outcome, headline: plan.report.headline, problems };
 }
