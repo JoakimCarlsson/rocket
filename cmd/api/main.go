@@ -3,15 +3,19 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
 	"runtime/debug"
 	"syscall"
 
+	"github.com/JoakimCarlsson/rocket/internal/account"
 	"github.com/JoakimCarlsson/rocket/internal/config"
 	"github.com/JoakimCarlsson/rocket/internal/engineer"
 	"github.com/JoakimCarlsson/rocket/internal/httpx"
+	"github.com/JoakimCarlsson/rocket/internal/schema"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joakimcarlsson/ai/llm"
 	llmopenai "github.com/joakimcarlsson/ai/llm/openai"
 	llmopenrouter "github.com/joakimcarlsson/ai/llm/openrouter"
@@ -51,6 +55,23 @@ func run() error {
 	)
 	defer stop()
 
+	if cfg.DevAuth {
+		slog.WarnContext(ctx, "dev auth is on; anyone who can reach the api "+
+			"can mint a session at POST /api/dev/auth/token")
+	}
+
+	pool, err := pgxpool.New(ctx, cfg.Postgres.URL())
+	if err != nil {
+		return fmt.Errorf("connecting to postgres: %w", err)
+	}
+	defer pool.Close()
+	if err := pool.Ping(ctx); err != nil {
+		return fmt.Errorf("pinging postgres: %w", err)
+	}
+	if err := schema.Verify(ctx, pool); err != nil {
+		return err
+	}
+
 	var eng *engineer.Engineer
 	if cfg.OpenRouter.Configured() {
 		eng = engineer.New(newOpenRouter(cfg.OpenRouter))
@@ -61,8 +82,16 @@ func run() error {
 	}
 
 	srv := httpx.New(
-		httpx.Config{Addr: cfg.Addr, Version: buildVersion()},
-		httpx.Deps{Engineer: eng},
+		httpx.Config{
+			Addr:    cfg.Addr,
+			Version: buildVersion(),
+			Google:  cfg.Google,
+			DevAuth: cfg.DevAuth,
+		},
+		httpx.Deps{
+			Engineer: eng,
+			Accounts: account.NewStore(pool),
+		},
 	)
 	return srv.Start(ctx)
 }

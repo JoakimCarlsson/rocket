@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, JetBrains_Mono, Unbounded } from "next/font/google";
+import { SessionProvider } from "@/lib/account/session";
 import "./globals.css";
 
 const body = Geist({ variable: "--font-body", subsets: ["latin"] });
@@ -34,7 +35,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="en"
       className={`${body.variable} ${display.variable} ${mono.variable} h-full antialiased`}
     >
-      <body className="grain min-h-full bg-bg text-text">{children}</body>
+      <body className="grain min-h-full bg-bg text-text">
+        <SessionProvider>{children}</SessionProvider>
+      </body>
     </html>
   );
 }

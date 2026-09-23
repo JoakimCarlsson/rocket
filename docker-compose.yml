@@ -1,9 +1,60 @@
 services:
   api:
     build: .
+    image: rocket-api
     restart: unless-stopped
     ports:
       - "3002:8080"
     environment:
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:?Set OPENROUTER_API_KEY in the environment or .env}
       OPENROUTER_MODEL: ${OPENROUTER_MODEL:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      ROCKET_PUBLIC_URL: ${ROCKET_PUBLIC_URL:-}
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: ${PGDATABASE:-rocket}
+      PGUSER: ${PGUSER:-rocket}
+      PGPASSWORD: ${PGPASSWORD:-rocket}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  migrate:
+    build: .
+    image: rocket-api
+    entrypoint: ["migrate"]
+    environment:
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      ROCKET_PUBLIC_URL: ${ROCKET_PUBLIC_URL:-}
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: ${PGDATABASE:-rocket}
+      PGUSER: ${PGUSER:-rocket}
+      PGPASSWORD: ${PGPASSWORD:-rocket}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    profiles: ["migrate"]
+
+  postgres:
+    image: postgres:18
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${PGPORT:-30003}:5432"
+    environment:
+      POSTGRES_USER: ${PGUSER:-rocket}
+      POSTGRES_PASSWORD: ${PGPASSWORD:-rocket}
+      POSTGRES_DB: ${PGDATABASE:-rocket}
+    volumes:
+      - pgdata:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PGUSER:-rocket} -d ${PGDATABASE:-rocket}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:

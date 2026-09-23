@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { AccountHeaderButton } from "@/components/ui/AccountButton";
 import { Wordmark } from "@/components/ui/BrandRail";
 import { Icon } from "@/components/ui/Icon";
 import { type FeedPost, feedPage } from "@/lib/feed/community";
@@ -73,12 +74,15 @@ export function Explore() {
                 Explore · community launches
               </span>
             </div>
-            <Link
-              href="/"
-              className="flex items-center gap-2 rounded-xl bg-accent px-4 py-2 font-display text-[12px] font-bold tracking-[0.1em] text-black"
-            >
-              <Icon name="rocket" size={14} /> BUILD YOUR OWN
-            </Link>
+            <div className="flex items-center gap-2">
+              <AccountHeaderButton />
+              <Link
+                href="/"
+                className="flex items-center gap-2 rounded-xl bg-accent px-4 py-2 font-display text-[12px] font-bold tracking-[0.1em] text-black"
+              >
+                <Icon name="rocket" size={14} /> BUILD YOUR OWN
+              </Link>
+            </div>
           </div>
         </header>
 

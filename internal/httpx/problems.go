@@ -30,3 +30,13 @@ func statusProblem(status int, detail string) *router.ProblemDetails {
 		Detail: detail,
 	}
 }
+
+// fail logs the cause and answers 500 with a detail that names the step rather
+// than repeating the error.
+func fail(c *router.Context, doing string, err error) {
+	slog.ErrorContext(c.Request.Context(), "request failed",
+		"doing", doing,
+		"error", err,
+	)
+	problem(c, router.InternalServerError("failed "+doing))
+}

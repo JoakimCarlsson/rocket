@@ -19,6 +19,7 @@ const PATHS = {
   remix: "M4 7h11l-3-3M20 17H9l3 3M4 7v4M20 17v-4",
   download: "M12 3v12M7 10l5 5 5-5M4 20h16",
   copy: "M8 8h12v12H8zM4 16V4h12",
+  user: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4 21a8 8 0 0 1 16 0",
 } as const;
 
 /** Name of a built-in stroke icon. */

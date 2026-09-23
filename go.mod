@@ -3,18 +3,27 @@ module github.com/JoakimCarlsson/rocket
 go 1.27.1
 
 require (
+	github.com/jackc/pgx/v5 v5.11.0
+	github.com/jackc/tern/v2 v2.4.3
 	github.com/joakimcarlsson/ai/llm v0.6.3
 	github.com/joakimcarlsson/ai/llm/openai v0.9.1
 	github.com/joakimcarlsson/ai/llm/openrouter v0.7.2
 	github.com/joakimcarlsson/ai/message v0.6.1
 	github.com/joakimcarlsson/ai/schema v0.2.2
+	github.com/joakimcarlsson/minmux/auth v0.1.0
 	github.com/joakimcarlsson/minmux/openapi v0.1.0
 	github.com/joakimcarlsson/minmux/router v0.1.0
 	github.com/joakimcarlsson/minmux/scalar v0.1.0
 	github.com/joho/godotenv v1.5.1
+	golang.org/x/oauth2 v0.37.0
 )
 
 require (
+	cloud.google.com/go/compute/metadata v0.9.0 // indirect
+	dario.cat/mergo v1.0.2 // indirect
+	github.com/Masterminds/goutils v1.1.1 // indirect
+	github.com/Masterminds/semver/v3 v3.5.0 // indirect
+	github.com/Masterminds/sprig/v3 v3.3.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/go-logr/logr v1.4.4 // indirect
@@ -22,13 +31,21 @@ require (
 	github.com/google/jsonschema-go v0.4.3 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.30.0 // indirect
+	github.com/huandu/xstrings v1.5.0 // indirect
+	github.com/jackc/pgpassfile v1.0.0 // indirect
+	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
+	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/joakimcarlsson/ai/tool v0.1.4 // indirect
 	github.com/joakimcarlsson/ai/tracing v0.2.1 // indirect
 	github.com/joakimcarlsson/ai/types v0.2.1 // indirect
+	github.com/mitchellh/copystructure v1.2.0 // indirect
+	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/modelcontextprotocol/go-sdk v1.7.0 // indirect
 	github.com/openai/openai-go/v3 v3.61.0 // indirect
 	github.com/segmentio/asm v1.2.1 // indirect
 	github.com/segmentio/encoding v0.5.4 // indirect
+	github.com/shopspring/decimal v1.4.0 // indirect
+	github.com/spf13/cast v1.10.0 // indirect
 	github.com/tidwall/gjson v1.19.0 // indirect
 	github.com/tidwall/match v1.2.0 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
@@ -47,8 +64,8 @@ require (
 	go.opentelemetry.io/otel/sdk/metric v1.46.0 // indirect
 	go.opentelemetry.io/otel/trace v1.46.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.11.0 // indirect
+	golang.org/x/crypto v0.57.0 // indirect
 	golang.org/x/net v0.59.0 // indirect
-	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sync v0.23.0 // indirect
 	golang.org/x/sys v0.48.0 // indirect
 	golang.org/x/text v0.42.0 // indirect

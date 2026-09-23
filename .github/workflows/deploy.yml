@@ -10,14 +10,26 @@ concurrency:
 jobs:
   deploy:
     runs-on: self-hosted
-    env:
-      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-
     steps:
       - uses: actions/checkout@v6.0.2
 
+      - name: Write .env
+        env:
+          ENV_FILE: ${{ secrets.ENV_FILE }}
+        run: |
+          umask 077
+          printf '%s\n' "$ENV_FILE" > .env
+
+      - name: Build
+        run: docker compose build api
+
+      - name: Migrate
+        run: |
+          docker compose up -d --wait postgres
+          docker compose run --rm -T migrate
+
       - name: Deploy
-        run: docker compose up -d --build --remove-orphans
+        run: docker compose up -d --remove-orphans
 
       - name: Verify the app is serving
         run: |

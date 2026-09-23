@@ -25,7 +25,9 @@ RUN --mount=type=cache,target=/go/pkg/mod \
     CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH:-amd64} \
     go build -trimpath \
       -ldflags "-s -w${VERSION:+ -X main.version=$VERSION}" \
-      -o /out/api ./cmd/api
+      -o /out/api ./cmd/api && \
+    CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH:-amd64} \
+    go build -trimpath -ldflags "-s -w" -o /out/migrate ./cmd/migrate
 
 FROM alpine:3.22 AS runtime
 
@@ -33,7 +35,7 @@ RUN apk add --no-cache ca-certificates tzdata && \
     adduser -D -u 10001 -h /app rocket
 
 WORKDIR /app
-COPY --from=build /out/api /usr/local/bin/
+COPY --from=build /out/api /out/migrate /usr/local/bin/
 
 ENV ROCKET_ADDR=:8080
 

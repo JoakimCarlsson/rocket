@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import Link from "next/link";
 import { useEffect, useRef } from "react";
 import type { Message } from "@/lib/store";
+import { AccountRailButton } from "./AccountButton";
 import { Icon, type IconName } from "./Icon";
 
 /** A compact labelled control button. */
@@ -153,6 +154,8 @@ export function BrandRail(props: BrandRailProps) {
           onClick={props.onToggleMute}
           active={!props.muted}
         />
+        <div className="my-1 h-px bg-line" />
+        <AccountRailButton />
       </nav>
 
       <div className="flex min-h-0 flex-1 flex-col">
