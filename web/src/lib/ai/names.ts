@@ -71,27 +71,3 @@ export function generateName(config: RocketConfig, rng: Rng): string {
     ? `THE ${pick(rng, ADJECTIVES)} ${noun}`
     : `${pick(rng, ADJECTIVES)} ${noun} MK ${pick(rng, ROMAN)}`;
 }
-
-const HANDLES = [
-  "orbitgoblin",
-  "ksp_refugee",
-  "thrustlord",
-  "dr_kaboom",
-  "nasa_intern_ish",
-  "moonmoth",
-  "boostermaxxer",
-  "gravitydenier",
-  "apogee_andy",
-  "rocketsurgeon",
-  "lil_payload",
-  "stage_fright",
-  "chaos_director",
-  "duckmission",
-  "fuel_is_food",
-  "mr_countdown",
-];
-
-/** Picks a fake community handle. */
-export function generateCreator(rng: Rng): string {
-  return `@${pick(rng, HANDLES)}${rng() < 0.4 ? Math.floor(rng() * 99) : ""}`;
-}

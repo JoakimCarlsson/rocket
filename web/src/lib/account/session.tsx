@@ -9,7 +9,8 @@ import {
   useMemo,
   useState,
 } from "react";
-import { ApiError, getMe, logout, type Me } from "./api";
+import { ApiError } from "@/lib/api";
+import { getMe, logout, type Me } from "./api";
 
 /** A signed-in player and the way out. */
 export interface Session {

@@ -4,7 +4,6 @@ import type { RocketConfig } from "./rocket/types";
 const KEYS = {
   session: "rocketai.session.v1",
   achievements: "rocketai.achievements.v1",
-  likes: "rocketai.likes.v1",
   incoming: "rocketai.incoming.v1",
   muted: "rocketai.muted.v1",
 };
@@ -67,16 +66,6 @@ export function loadAchievements(): string[] {
 /** Saves unlocked achievement ids. */
 export function saveAchievements(ids: string[]): void {
   write(local, KEYS.achievements, ids);
-}
-
-/** Loads the set of liked feed posts. */
-export function loadLikes(): string[] {
-  return read<string[]>(local, KEYS.likes) ?? [];
-}
-
-/** Saves the set of liked feed posts. */
-export function saveLikes(ids: string[]): void {
-  write(local, KEYS.likes, ids);
 }
 
 /** A rocket handed to the builder from Explore or a shared page. */

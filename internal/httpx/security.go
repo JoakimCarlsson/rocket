@@ -141,3 +141,19 @@ func (s *Server) clearCookie(c *router.Context, name string) {
 		SameSite: http.SameSiteLaxMode,
 	})
 }
+
+// viewerID returns the id of whoever is signed in, or empty for anybody else.
+// It is for public routes that only personalise what they return: a missing,
+// unknown or expired session reads as anonymous there rather than as a 401,
+// so a stale cookie never locks somebody out of a page anyone may see.
+func (s *Server) viewerID(r *http.Request) string {
+	token := s.sessionToken(r)
+	if token == "" {
+		return ""
+	}
+	u, err := account.Authenticate(r.Context(), s.accounts, token)
+	if err != nil {
+		return ""
+	}
+	return u.ID
+}

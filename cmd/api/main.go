@@ -14,6 +14,7 @@ import (
 	"github.com/JoakimCarlsson/rocket/internal/config"
 	"github.com/JoakimCarlsson/rocket/internal/engineer"
 	"github.com/JoakimCarlsson/rocket/internal/httpx"
+	"github.com/JoakimCarlsson/rocket/internal/rocket"
 	"github.com/JoakimCarlsson/rocket/internal/schema"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joakimcarlsson/ai/llm"
@@ -91,6 +92,7 @@ func run() error {
 		httpx.Deps{
 			Engineer: eng,
 			Accounts: account.NewStore(pool),
+			Rockets:  rocket.NewStore(pool),
 		},
 	)
 	return srv.Start(ctx)

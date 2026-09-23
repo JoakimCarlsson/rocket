@@ -8,6 +8,7 @@ import (
 	"github.com/JoakimCarlsson/rocket/internal/account"
 	"github.com/JoakimCarlsson/rocket/internal/config"
 	"github.com/JoakimCarlsson/rocket/internal/engineer"
+	"github.com/JoakimCarlsson/rocket/internal/rocket"
 	"github.com/joakimcarlsson/minmux/auth"
 	"github.com/joakimcarlsson/minmux/openapi"
 	"github.com/joakimcarlsson/minmux/router"
@@ -40,6 +41,8 @@ type Deps struct {
 	Engineer *engineer.Engineer
 	// Accounts holds users and their sessions. Required.
 	Accounts *account.Store
+	// Rockets holds published rockets and their likes. Required.
+	Rockets *rocket.Store
 }
 
 // Server owns the minmux router and the underlying http.Server.
@@ -50,6 +53,7 @@ type Server struct {
 	docs         *openapi.Generator
 	engineer     *engineer.Engineer
 	accounts     *account.Store
+	rockets      *rocket.Store
 	google       *oauth2.Config
 	googleHTTP   *http.Client
 	cookieSecure bool
@@ -64,6 +68,7 @@ func New(cfg Config, deps Deps) *Server {
 		router:   router.New(),
 		engineer: deps.Engineer,
 		accounts: deps.Accounts,
+		rockets:  deps.Rockets,
 		google: &oauth2.Config{
 			ClientID:     cfg.Google.ClientID,
 			ClientSecret: cfg.Google.ClientSecret,
@@ -98,6 +103,7 @@ func (s *Server) routes() {
 		s.registerDev()
 	}
 	s.registerAI()
+	s.registerRockets()
 	s.registerDocs()
 	s.registerSPA()
 }

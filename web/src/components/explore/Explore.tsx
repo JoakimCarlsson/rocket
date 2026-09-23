@@ -4,13 +4,20 @@ import { motion } from "motion/react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AccountHeaderButton } from "@/components/ui/AccountButton";
 import { Wordmark } from "@/components/ui/BrandRail";
 import { Icon } from "@/components/ui/Icon";
-import { type FeedPost, feedPage } from "@/lib/feed/community";
+import { signIn } from "@/lib/account/api";
+import { useOptionalSession } from "@/lib/account/session";
+import {
+  type FeedPost,
+  fetchFeed,
+  type LikeState,
+  setLiked,
+} from "@/lib/feed/api";
 import { compactNumber } from "@/lib/format";
-import { handOff, loadLikes, saveLikes } from "@/lib/persistence";
+import { handOff } from "@/lib/persistence";
 import { computeStats } from "@/lib/rocket/stats";
 import { sharePath } from "@/lib/share";
 import { OutcomeBadge } from "./OutcomeBadge";
@@ -22,40 +29,70 @@ const ThumbnailProvider = dynamic(
   { ssr: false },
 );
 
-/** Infinite feed of community rockets. */
+/** Infinite feed of published rockets, read from the API a page at a time. */
 export function Explore() {
-  const [pages, setPages] = useState(1);
-  const [likes, setLikes] = useState<string[]>([]);
-  const sentinel = useRef<HTMLDivElement>(null);
-  const router = useRouter();
-  const posts = useMemo(
-    () => Array.from({ length: pages }, (_, i) => feedPage(i)).flat(),
-    [pages],
+  const [posts, setPosts] = useState<FeedPost[]>([]);
+  const [cursor, setCursor] = useState("");
+  const [status, setStatus] = useState<"loading" | "idle" | "done" | "error">(
+    "loading",
   );
+  const sentinel = useRef<HTMLDivElement>(null);
+  const loading = useRef(false);
+  const router = useRouter();
+  const session = useOptionalSession();
 
-  useEffect(() => {
-    setLikes(loadLikes());
+  const loadMore = useCallback(async (before: string) => {
+    if (loading.current) return;
+    loading.current = true;
+    setStatus("loading");
+    try {
+      const page = await fetchFeed(before);
+      setPosts((current) => {
+        const seen = new Set(current.map((p) => p.id));
+        return [...current, ...page.posts.filter((p) => !seen.has(p.id))];
+      });
+      setCursor(page.next);
+      setStatus(page.next ? "idle" : "done");
+    } catch {
+      setStatus("error");
+    } finally {
+      loading.current = false;
+    }
   }, []);
 
   useEffect(() => {
+    void loadMore("");
+  }, [loadMore]);
+
+  useEffect(() => {
     const el = sentinel.current;
-    if (!el) return;
+    if (!el || status !== "idle") return;
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries[0].isIntersecting) setPages((p) => Math.min(p + 1, 400));
+        if (entries[0].isIntersecting) void loadMore(cursor);
       },
       { rootMargin: "800px" },
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, []);
+  }, [cursor, status, loadMore]);
 
-  const toggleLike = (id: string) => {
-    const next = likes.includes(id)
-      ? likes.filter((l) => l !== id)
-      : [...likes, id];
-    setLikes(next);
-    saveLikes(next);
+  const toggleLike = async (post: FeedPost) => {
+    if (!session) {
+      signIn();
+      return;
+    }
+    const liked = !post.liked;
+    const patch = (state: LikeState) =>
+      setPosts((current) =>
+        current.map((p) => (p.id === post.id ? { ...p, ...state } : p)),
+      );
+    patch({ liked, likes: post.likes + (liked ? 1 : -1) });
+    try {
+      patch(await setLiked(post.id, liked));
+    } catch {
+      patch({ liked: post.liked, likes: post.likes });
+    }
   };
 
   const remix = (post: FeedPost) => {
@@ -97,35 +134,73 @@ export function Explore() {
           </p>
         </section>
 
-        <div className="mx-auto max-w-[1400px] columns-1 gap-4 px-4 pb-24 sm:columns-2 sm:px-6 lg:columns-3 xl:columns-4">
+        <div className="mx-auto max-w-[1400px] columns-1 gap-4 px-4 pb-6 sm:columns-2 sm:px-6 lg:columns-3 xl:columns-4">
           {posts.map((post, i) => (
             <Card
               key={post.id}
               post={post}
               index={i}
-              liked={likes.includes(post.id)}
-              onLike={() => toggleLike(post.id)}
+              onLike={() => void toggleLike(post)}
               onRemix={() => remix(post)}
             />
           ))}
         </div>
+        <FeedStatus
+          status={status}
+          empty={posts.length === 0}
+          onRetry={() => void loadMore(cursor)}
+        />
         <div ref={sentinel} className="h-10" />
       </main>
     </ThumbnailProvider>
   );
 }
 
+/** What sits under the feed: loading, the end, nothing yet, or a retry. */
+function FeedStatus({
+  status,
+  empty,
+  onRetry,
+}: {
+  status: "loading" | "idle" | "done" | "error";
+  empty: boolean;
+  onRetry: () => void;
+}) {
+  const className =
+    "mx-auto max-w-[1400px] px-4 pb-24 text-center font-mono text-[11px] tracking-[0.14em] text-faint sm:px-6";
+  if (status === "error")
+    return (
+      <div className={className}>
+        THE FEED DID NOT LOAD.{" "}
+        <button onClick={onRetry} className="text-muted hover:text-text">
+          TRY AGAIN
+        </button>
+      </div>
+    );
+  if (status === "loading") return <div className={className}>LOADING…</div>;
+  if (status === "done" && empty)
+    return (
+      <div className={className}>
+        NOTHING HAS LAUNCHED YET.{" "}
+        <Link href="/" className="text-muted hover:text-text">
+          BUILD ONE AND PUBLISH IT
+        </Link>
+      </div>
+    );
+  if (status === "done")
+    return <div className={className}>THAT IS EVERY ROCKET.</div>;
+  return null;
+}
+
 /** One community rocket card. */
 function Card({
   post,
   index,
-  liked,
   onLike,
   onRemix,
 }: {
   post: FeedPost;
   index: number;
-  liked: boolean;
   onLike: () => void;
   onRemix: () => void;
 }) {
@@ -160,15 +235,15 @@ function Card({
           </div>
           <button
             onClick={onLike}
-            className={`flex shrink-0 items-center gap-1 font-mono text-[11px] transition ${liked ? "text-accent" : "text-muted hover:text-text"}`}
-            aria-pressed={liked}
+            className={`flex shrink-0 items-center gap-1 font-mono text-[11px] transition ${post.liked ? "text-accent" : "text-muted hover:text-text"}`}
+            aria-pressed={post.liked}
           >
             <Icon
               name="heart"
               size={14}
-              className={liked ? "fill-accent" : ""}
+              className={post.liked ? "fill-accent" : ""}
             />
-            {compactNumber(post.likes + (liked ? 1 : 0))}
+            {compactNumber(post.likes)}
           </button>
         </div>
         <p className="mt-3 line-clamp-2 font-mono text-[11px] leading-relaxed text-text/70">

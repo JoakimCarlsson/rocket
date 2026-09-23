@@ -3,11 +3,14 @@
 import { motion } from "motion/react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { signIn } from "@/lib/account/api";
+import { useOptionalSession } from "@/lib/account/session";
+import { type FeedPost, publishRocket } from "@/lib/feed/api";
 import type { RocketConfig } from "@/lib/rocket/types";
 import { encodeShare, sharePath, shareUrl } from "@/lib/share";
 import { Icon } from "./Icon";
 
-/** Modal with a copyable deterministic share link. */
+/** Modal with a copyable share link and a way to publish the rocket to Explore. */
 export function ShareDialog({
   rocket,
   prompt,
@@ -19,10 +22,12 @@ export function ShareDialog({
   attempt: number | null;
   onClose: () => void;
 }) {
-  const id = useMemo(
+  const encoded = useMemo(
     () => encodeShare({ rocket, prompt, creator: "@you", attempt }),
     [rocket, prompt, attempt],
   );
+  const [published, setPublished] = useState<FeedPost>();
+  const id = published?.id ?? encoded;
   const url = shareUrl(id);
   const [copied, setCopied] = useState(false);
   const copy = async () => {
@@ -74,9 +79,16 @@ export function ShareDialog({
           </button>
         </div>
         <p className="mt-3 text-[13px] text-muted">
-          The link contains the whole rocket, so anyone can open it, launch it
-          and remix it. No account needed.
+          {published
+            ? "Published. It is on Explore now, and this link points at it."
+            : "The link contains the whole rocket, so anyone can open it, launch it and remix it. No account needed."}
         </p>
+        <PublishButton
+          rocket={rocket}
+          prompt={prompt}
+          published={published}
+          onPublished={setPublished}
+        />
         <div className="mt-4 flex gap-2">
           <input
             readOnly
@@ -118,5 +130,60 @@ export function ShareDialog({
         </div>
       </motion.div>
     </motion.div>
+  );
+}
+
+/** Publishes the rocket to Explore, asking the player to sign in first. */
+function PublishButton({
+  rocket,
+  prompt,
+  published,
+  onPublished,
+}: {
+  rocket: RocketConfig;
+  prompt: string;
+  published?: FeedPost;
+  onPublished: (post: FeedPost) => void;
+}) {
+  const session = useOptionalSession();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string>();
+  const className =
+    "mt-4 flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-accent font-display text-[12px] font-bold tracking-[0.1em] text-black disabled:opacity-40";
+
+  if (published)
+    return (
+      <Link href="/explore" className={className}>
+        <Icon name="explore" size={14} /> SEE IT ON EXPLORE
+      </Link>
+    );
+  if (!session)
+    return (
+      <button onClick={signIn} className={className}>
+        <Icon name="user" size={14} /> SIGN IN TO PUBLISH
+      </button>
+    );
+
+  const publish = async () => {
+    setBusy(true);
+    setError(undefined);
+    try {
+      onPublished(await publishRocket(rocket, prompt));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not publish");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <>
+      <button onClick={publish} disabled={busy} className={className}>
+        <Icon name="explore" size={14} />
+        {busy ? "PUBLISHING…" : "PUBLISH TO EXPLORE"}
+      </button>
+      {error && (
+        <p className="mt-2 font-mono text-[10.5px] text-muted">{error}</p>
+      )}
+    </>
   );
 }
