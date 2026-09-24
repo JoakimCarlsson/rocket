@@ -13,10 +13,11 @@ import {
 } from "@/lib/rocket/layout";
 import type { RocketConfig } from "@/lib/rocket/types";
 import {
+  flightTime,
   type LaunchEvent,
   type LaunchPlan,
   telemetryAt,
-} from "@/lib/sim/simulate";
+} from "@/lib/sim/playback";
 import { PartMesh, type RenderFlags, RenderFlagsProvider } from "./PartMesh";
 import { ParticleField } from "./particles";
 
@@ -24,6 +25,8 @@ import { ParticleField } from "./particles";
 export const COUNTDOWN_SECONDS = 3.6;
 const PAD_TOP = 3;
 const GRAVITY = 14;
+const TRUE_SCALE_SECONDS = 15;
+const SCALE_FALLOFF = 0.8;
 
 /** Cue names the launch scene reports to the UI. */
 export type LaunchCue =
@@ -87,6 +90,18 @@ function buildSegments(layout: RocketLayout): SegmentData[] {
     centroid.divideScalar(Math.max(1, parts.length));
     return { key, parts, nozzles, centroid };
   });
+}
+
+/**
+ * Scene units per real metre at a moment of flight: true scale around the pad,
+ * shrinking later so a whole ascent fits in view. The rocket moves by its real
+ * displacement times this factor each frame, so its direction of travel is
+ * never distorted.
+ */
+function sceneScale(flightSeconds: number): number {
+  return flightSeconds < TRUE_SCALE_SECONDS
+    ? 1
+    : (TRUE_SCALE_SECONDS / flightSeconds) ** SCALE_FALLOFF;
 }
 
 /** Surface colours for the body shown on arrival. */
@@ -162,7 +177,6 @@ export function LaunchScene({
     [fields],
   );
 
-  const twr = plan.stats.twr;
   const tilt = THREE.MathUtils.degToRad(rocket.tilt);
   const glow = useMemo(
     () => new THREE.Color(rocket.appearance.glow),
@@ -188,12 +202,13 @@ export function LaunchScene({
     alive: true,
     lifted: false,
     tipping: false,
-    spinning: false,
-    wobbleUntil: -1,
     shake: 0,
     eventIndex: 0,
     attached: new Set(layout.segments),
     placed: false,
+    lastDownrange: 0,
+    lastAltitude: 0,
+    chaseOffset: new THREE.Vector3(),
     groundCamera: new THREE.Vector3(),
     lookAt: new THREE.Vector3(0, layout.height / 2, 0),
     countdownCue: 0,
@@ -392,17 +407,14 @@ export function LaunchScene({
           new THREE.Vector3(1.2, 2.4, out.x > 0 ? -1.8 : 1.8),
           5,
         );
-        s.angVel += out.x > 0 ? 0.12 : -0.12;
         s.shake = Math.max(s.shake, 1.2);
         break;
       }
       case "spin":
-        s.spinning = true;
         s.rollVel = 7;
-        s.angVel = (Math.random() > 0.5 ? 1 : -1) * 0.9;
         break;
       case "wobble":
-        s.wobbleUntil = s.clock + 2.8;
+        s.shake = Math.max(s.shake, 0.8);
         break;
       case "payload_pop":
         detach(
@@ -418,7 +430,6 @@ export function LaunchScene({
         s.thrusting = false;
         s.alive = true;
         firing.current = new Set();
-        s.angVel = (Math.random() > 0.5 ? 1 : -1) * 0.5;
         break;
       case "burnout":
         s.thrusting = false;
@@ -526,22 +537,24 @@ export function LaunchScene({
     altitude: number,
   ) => {
     const s = sim.current;
-    const focus =
-      s.alive || s.attached.size
-        ? s.pos.clone().addScaledVector(dir, layout.height * 0.45)
-        : s.lookAt;
-    s.lookAt.lerp(focus, Math.min(1, dt * 4));
+    const following = s.alive || s.attached.size > 0;
+    const focus = following
+      ? s.pos.clone().addScaledVector(dir, layout.height * 0.45)
+      : s.lookAt;
     const chase = altitude > 45 * scale || Math.abs(s.pos.x) > 80 * scale;
-    let desired: THREE.Vector3;
+    if (chase && following) s.lookAt.copy(focus);
+    else s.lookAt.lerp(focus, Math.min(1, dt * 4));
     if (!chase) {
-      desired = s.groundCamera.clone();
+      cam.position.lerp(s.groundCamera, Math.min(1, dt * 3));
+      s.chaseOffset.copy(cam.position).sub(s.pos);
     } else {
       const back = 70 * scale + Math.min(260, altitude * 0.12);
-      desired = s.pos
-        .clone()
-        .add(new THREE.Vector3(back * 0.55, -back * 0.18, back));
+      s.chaseOffset.lerp(
+        new THREE.Vector3(back * 0.55, -back * 0.18, back),
+        Math.min(1, dt * 1.6),
+      );
+      cam.position.copy(s.pos).add(s.chaseOffset);
     }
-    cam.position.lerp(desired, Math.min(1, dt * (chase ? 1.6 : 3)));
     const amp = s.shake * 0.35 * scale;
     cam.position.x += wiggle(s.clock, 11) * amp;
     cam.position.y += wiggle(s.clock, 17) * amp;
@@ -610,41 +623,23 @@ export function LaunchScene({
 
     let dir = direction(s.angle);
     if (s.lifted && s.alive) {
-      if (burning) {
-        const accel =
-          6 * THREE.MathUtils.clamp(twr, 0.9, 3.5) * (s.spinning ? 0.7 : 1);
-        s.vel.addScaledVector(dir, accel * dt);
-        s.vel.multiplyScalar(1 - 0.02 * dt);
-      } else {
-        s.vel.y -= GRAVITY * dt;
-      }
-      if (!s.spinning && burning) {
-        const program = THREE.MathUtils.clamp(
-          THREE.MathUtils.degToRad(telemetryAt(plan, t).pitch),
-          -1,
-          1,
-        );
-        s.angle = THREE.MathUtils.damp(s.angle, program, 0.8, dt);
-      }
-      if (s.spinning) s.angVel *= 1 + 0.25 * dt;
-      s.angle += s.angVel * dt;
-      if (!burning && !s.spinning)
-        s.angVel += Math.sign(s.angVel || 1) * 0.4 * dt;
-      if (s.clock < s.wobbleUntil) s.angle += Math.sin(s.clock * 11) * 0.9 * dt;
+      const path = telemetryAt(plan, t);
+      const scale = sceneScale(flightTime(plan, t));
+      const step = new THREE.Vector3(
+        (path.downrange - s.lastDownrange) * scale,
+        (path.altitude - s.lastAltitude) * scale,
+        0,
+      );
+      s.lastDownrange = path.downrange;
+      s.lastAltitude = path.altitude;
+      s.vel.lerp(
+        step.clone().divideScalar(Math.max(dt, 1e-3)),
+        Math.min(1, dt * 8),
+      );
+      s.pos.add(step);
+      s.angle = THREE.MathUtils.degToRad(path.pitch);
       s.roll += s.rollVel * dt;
       dir = direction(s.angle);
-      s.pos.addScaledVector(s.vel, dt);
-      if (burning && s.vel.lengthSq() > 1) {
-        s.vel.lerp(
-          dir.clone().multiplyScalar(s.vel.length()),
-          Math.min(1, dt * (s.spinning ? 0.8 : 2.5)),
-        );
-      }
-      if (s.pos.y < PAD_TOP - layout.minY - 0.5 && s.vel.y < 0) {
-        s.pos.y = PAD_TOP - layout.minY - 0.5;
-        if (s.vel.length() > 20) explode();
-        s.vel.set(0, 0, 0);
-      }
     } else if (s.tipping && s.alive) {
       s.angVel += Math.sign(s.angVel) * 1.4 * dt;
       s.angle += s.angVel * dt;
@@ -697,7 +692,7 @@ export function LaunchScene({
       speed: physical.speed,
       t,
     };
-    const space = THREE.MathUtils.smoothstep(altitude, 120, 1100);
+    const space = THREE.MathUtils.smoothstep(physical.altitude, 8_000, 60_000);
     if (sky.current) sky.current.uniforms.uSpace.value = space;
     if (stars.current) stars.current.opacity = space;
     if (scene.fog instanceof THREE.Fog) {

@@ -1,5 +1,4 @@
 import { makeId } from "./ids";
-import { buildVehicle, burnPhases } from "./physics";
 import {
   chance,
   createRng,
@@ -186,7 +185,7 @@ const DECOR: DecorKind[] = [
   "windows",
 ];
 
-/** Builds a fully random but always valid rocket from a seed. */
+/** Builds a fully random but always valid rocket from a seed. Its engines are untuned; the server sizes them. */
 export function createRandomRocket(seed: number): RocketConfig {
   const rng = createRng(seed);
   const [primary, secondary, accent] = pick(rng, PALETTES);
@@ -243,7 +242,7 @@ export function createRandomRocket(seed: number): RocketConfig {
     },
   );
   const payloadKind = pick(rng, PAYLOADS);
-  const rocket: RocketConfig = {
+  return {
     version: 1,
     name: DEFAULT_NAME,
     seed,
@@ -287,53 +286,4 @@ export function createRandomRocket(seed: number): RocketConfig {
       glow: pick(rng, ["#ffb070", "#7cc8ff", "#b28cff", "#8dffb0"]),
     },
   };
-  tuneThrust(rocket, rng);
-  return rocket;
-}
-
-/**
- * Sets each stage's engine power so its ignition thrust-to-weight lands in a flyable
- * band: 1.25 to 2.2 at liftoff and 0.7 to 1.4 for upper stages.
- */
-function tuneThrust(rocket: RocketConfig, rng: Rng): void {
-  const vehicle = buildVehicle(rocket);
-  rocket.boosters.forEach((booster, index) => {
-    const group = vehicle.boosters[index];
-    const weight =
-      (group.propellantMass +
-        vehicle.items
-          .filter((i) => i.owner === group.key)
-          .reduce((sum, i) => sum + i.mass, 0)) *
-      9.81;
-    const perEngine =
-      (weight * randRange(rng, 1.3, 1.9)) / booster.engine.count;
-    booster.engine.size = Math.min(
-      3.5,
-      Math.max(
-        0.3,
-        booster.engine.size *
-          Math.sqrt(
-            perEngine /
-              (group.perf.thrustVac * (group.perf.ispSea / group.perf.ispVac)),
-          ),
-      ),
-    );
-  });
-  rocket.stages.forEach((stage, index) => {
-    const target =
-      index === 0 ? randRange(rng, 1.25, 2.2) : randRange(rng, 0.7, 1.4);
-    for (let pass = 0; pass < 3; pass++) {
-      const phase = burnPhases(buildVehicle(rocket)).find((p) =>
-        p.label.startsWith(`S${index + 1}`),
-      );
-      if (!phase || phase.twr <= 0) return;
-      const power = stage.engine.power * (target / phase.twr);
-      stage.engine.power = Math.min(10, Math.max(1, power));
-      if (power > 10)
-        stage.engine.size = Math.min(
-          3.5,
-          stage.engine.size * Math.sqrt(power / 10),
-        );
-    }
-  });
 }

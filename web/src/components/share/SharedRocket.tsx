@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { OutcomeBadge } from "@/components/explore/OutcomeBadge";
 import { Wordmark } from "@/components/ui/BrandRail";
 import { Icon } from "@/components/ui/Icon";
@@ -11,9 +11,9 @@ import { get2DContext } from "@/lib/canvas";
 import { NO_RESTORE } from "@/lib/dom";
 import { STAT_META } from "@/lib/format";
 import { handOff } from "@/lib/persistence";
-import { computeStats } from "@/lib/rocket/stats";
+import { useFlight } from "@/lib/physics/useFlight";
+import type { SimulatedStats } from "@/lib/rocket/types";
 import { type SharePayload, sharePath, shareUrl } from "@/lib/share";
-import { simulateLaunch } from "@/lib/sim/simulate";
 
 const ShowcaseViewport = dynamic(
   () =>
@@ -35,11 +35,7 @@ export function SharedRocket({
 }) {
   const router = useRouter();
   const { rocket } = payload;
-  const stats = useMemo(() => computeStats(rocket), [rocket]);
-  const plan = useMemo(
-    () => simulateLaunch(rocket, payload.attempt ?? 1),
-    [rocket, payload.attempt],
-  );
+  const flight = useFlight(rocket, payload.attempt ?? 1);
   const [copied, setCopied] = useState(false);
 
   const remix = () => {
@@ -57,13 +53,13 @@ export function SharedRocket({
   };
 
   if (card)
-    return (
+    return flight ? (
       <ShareCard
         payload={payload}
-        stats={stats}
-        headline={plan.report.headline}
+        stats={flight.stats}
+        headline={flight.report.headline}
       />
-    );
+    ) : null;
 
   return (
     <main className="min-h-screen bg-bg lg:grid lg:h-screen lg:grid-cols-[1fr_420px] lg:overflow-hidden">
@@ -97,10 +93,14 @@ export function SharedRocket({
         <div className="rounded-2xl border border-line p-4">
           <div className="mb-3 flex items-center justify-between">
             <span className="label-xs">Launch outcome</span>
-            <OutcomeBadge plan={plan} />
+            {flight ? (
+              <OutcomeBadge launch={flight.report} />
+            ) : (
+              <span className="label-xs text-faint">Flying…</span>
+            )}
           </div>
           <dl className="space-y-1.5">
-            {plan.report.rows.map((row) => (
+            {flight?.report.rows.map((row) => (
               <div
                 key={row.label}
                 className="flex justify-between gap-4 text-[13px]"
@@ -117,7 +117,7 @@ export function SharedRocket({
             <div key={meta.key}>
               <div className="label-xs">{meta.label}</div>
               <div className="font-mono text-[15px]">
-                {meta.format(stats[meta.key])}
+                {flight ? meta.format(flight.stats[meta.key]) : "…"}
                 <span className="ml-1 text-[10px] text-faint">{meta.unit}</span>
               </div>
             </div>
@@ -164,7 +164,7 @@ function ShareCard({
   headline,
 }: {
   payload: SharePayload;
-  stats: ReturnType<typeof computeStats>;
+  stats: SimulatedStats;
   headline: string;
 }) {
   const frame = useRef<HTMLDivElement>(null);

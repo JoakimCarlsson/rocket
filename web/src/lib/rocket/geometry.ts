@@ -94,13 +94,6 @@ export function totalHeight(config: RocketConfig): number {
   );
 }
 
-/** Returns the widest horizontal extent of the vehicle, boosters included. */
-export function totalWidth(config: RocketConfig): number {
-  const core = Math.max(...config.stages.map((stage) => stage.radius), 1);
-  const booster = Math.max(0, ...config.boosters.map((b) => b.radius));
-  return (core + booster * 2) * 2;
-}
-
 /** Fin planform: how far each fin sticks out and how long its root is. */
 export function finGeometry(config: RocketConfig): {
   span: number;
@@ -127,13 +120,4 @@ export function decorAnchor(config: RocketConfig, attach: DecorAttach): number {
     case "bottom":
       return Math.min(core * 0.18, 6);
   }
-}
-
-/** Returns the index of the stage whose body covers a height, or null for the payload section. */
-export function stageIndexAt(
-  config: RocketConfig,
-  height: number,
-): number | null {
-  const section = stackSections(config).find((s) => height <= s.top);
-  return section ? section.index : null;
 }

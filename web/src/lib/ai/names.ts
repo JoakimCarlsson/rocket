@@ -1,5 +1,5 @@
+import { totalHeight } from "../rocket/geometry";
 import { pick, type Rng } from "../rocket/random";
-import { computeStats } from "../rocket/stats";
 import type { RocketConfig } from "../rocket/types";
 
 const ADJECTIVES = [
@@ -42,12 +42,12 @@ const ROMAN = ["II", "III", "IV", "V", "VII", "IX", "XII"];
 
 /** Invents a funny name that reacts to how the rocket looks. */
 export function generateName(config: RocketConfig, rng: Rng): string {
-  const stats = computeStats(config);
   const themed: string[] = [];
   if (config.boosters.length >= 10)
     themed.push("ABSOLUTE UNIT", "THE BOOSTER BUFFET", "TOO MANY TUBES");
-  if (stats.height > 140) themed.push("THE SKY PENCIL", "VERTICAL AMBITION");
-  if (stats.cost < 250)
+  if (totalHeight(config) > 140)
+    themed.push("THE SKY PENCIL", "VERTICAL AMBITION");
+  if (config.stages.length === 1 && config.boosters.length === 0)
     themed.push("THE TAX WRITE-OFF", "COUPON CLIPPER", "THE BUDGET MISTAKE");
   if (config.destination === "moon")
     themed.push("LUNAR SHOPPING CART", "MOON OR BUST", "CHEESE SEEKER");
@@ -55,7 +55,12 @@ export function generateName(config: RocketConfig, rng: Rng): string {
     themed.push("RED PLANET RENTAL", "MARS OR MAYBE", "DUSTY DREAMER");
   if (config.destination === "sun") themed.push("THE BAD IDEA", "SOLAR REGRET");
   if (config.tilt) themed.push("THE SIDEWAYS SITUATION", "HORIZONTAL AMBITION");
-  if (stats.chaos > 70)
+  if (
+    config.boosters.length >= 8 ||
+    config.decorativeParts.filter((d) =>
+      ["googlyEyes", "duck", "propeller", "spikes"].includes(d.kind),
+    ).length >= 2
+  )
     themed.push("THE PROBLEM SOLVER", "OOPS ALL BOOSTERS", "CHAOS ENGINE");
   if (config.decorativeParts.some((d) => d.kind === "duck"))
     themed.push("DUCK OF DESTINY", "QUACKSTAR");

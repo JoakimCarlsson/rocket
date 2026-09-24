@@ -1,7 +1,7 @@
 import { request } from "@/lib/api";
+import type { LaunchSummary } from "@/lib/physics/api";
 import { parseRocket } from "@/lib/rocket/schema";
 import type { RocketConfig } from "@/lib/rocket/types";
-import { type LaunchPlan, simulateLaunch } from "@/lib/sim/simulate";
 
 /** A published rocket on the Explore feed. */
 export interface FeedPost {
@@ -13,7 +13,7 @@ export interface FeedPost {
   likes: number;
   liked: boolean;
   mine: boolean;
-  plan: LaunchPlan;
+  launch: LaunchSummary;
 }
 
 /** One page of the feed. `next` is empty on the last page. */
@@ -32,6 +32,7 @@ interface RocketResponse {
   likes: number;
   liked: boolean;
   mine: boolean;
+  launch: LaunchSummary | null;
 }
 
 /** A rocket's like state after a change. */
@@ -62,7 +63,7 @@ function handle(name: string): string {
 /** Validates a published rocket into a post, or null when its config no longer parses. */
 function toPost(data: RocketResponse): FeedPost | null {
   const rocket = parseRocket(data.config);
-  if (!rocket) return null;
+  if (!rocket || !data.launch) return null;
   return {
     id: data.id,
     name: data.name,
@@ -72,7 +73,7 @@ function toPost(data: RocketResponse): FeedPost | null {
     likes: data.likes,
     liked: data.liked,
     mine: data.mine,
-    plan: simulateLaunch(rocket, 1),
+    launch: data.launch,
   };
 }
 

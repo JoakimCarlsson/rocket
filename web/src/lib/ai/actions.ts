@@ -230,7 +230,7 @@ export function validateModelOutput(raw: unknown, provider: string): AIResult {
   const actions: RocketAction[] = [];
   let rejected = 0;
   for (const candidate of envelope.data.actions.slice(0, MAX_ACTIONS)) {
-    const parsed = actionSchema.safeParse(stripNulls(candidate));
+    const parsed = actionSchema.safeParse(targetById(stripNulls(candidate)));
     if (parsed.success) actions.push(parsed.data);
     else rejected++;
   }
@@ -251,4 +251,32 @@ function stripNulls(value: unknown): unknown {
   return Object.fromEntries(
     Object.entries(value).filter(([, v]) => v !== null),
   );
+}
+
+const COMPONENT_ID = /^[a-z]{3}-[a-z0-9]{3,12}$/;
+const GROUP_TARGETS = new Set([
+  "rocket",
+  "stages",
+  "boosters",
+  "all",
+  "engines",
+]);
+
+/**
+ * Models often put a component id in `target`, or pair a whole-group target with an id.
+ * Both mean "this one component", so they are rewritten to `target: "id"`.
+ */
+function targetById(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const action = value as Record<string, unknown>;
+  if (typeof action.target !== "string") return value;
+  if (COMPONENT_ID.test(action.target))
+    return { ...action, target: "id", id: action.target };
+  if (
+    typeof action.id === "string" &&
+    COMPONENT_ID.test(action.id) &&
+    GROUP_TARGETS.has(action.target)
+  )
+    return { ...action, target: "id" };
+  return value;
 }

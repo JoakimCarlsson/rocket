@@ -4,7 +4,7 @@ import { Canvas } from "@react-three/fiber";
 import { Suspense, useCallback, useMemo, useRef } from "react";
 import { layoutRocket, type PlacedPart } from "@/lib/rocket/layout";
 import type { RocketConfig } from "@/lib/rocket/types";
-import type { LaunchPlan } from "@/lib/sim/simulate";
+import type { LaunchPlan } from "@/lib/sim/playback";
 import { sound } from "@/lib/sound";
 import { Bay, BayCamera } from "./Bay";
 import { type LaunchCue, LaunchScene, type Telemetry } from "./LaunchScene";

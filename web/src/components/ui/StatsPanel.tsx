@@ -3,10 +3,26 @@
 import { motion } from "motion/react";
 import { useMemo, useState } from "react";
 import { compactNumber, STAT_META } from "@/lib/format";
-import type { BurnPhase } from "@/lib/rocket/physics";
-import { computeStats, jokeMeters, stagingBreakdown } from "@/lib/rocket/stats";
+import type { Burn } from "@/lib/physics/api";
+import { useAnalysis } from "@/lib/physics/useAnalysis";
+import { jokeMeters } from "@/lib/rocket/stats";
 import type { RocketConfig, SimulatedStats } from "@/lib/rocket/types";
 import { AnimatedNumber } from "./AnimatedNumber";
+
+/** Shown until the server's analysis arrives. */
+const NO_STATS: SimulatedStats = {
+  height: 0,
+  mass: 0,
+  thrust: 0,
+  twr: 0,
+  deltaV: 0,
+  deltaVNeeded: 1,
+  stability: 0,
+  crew: 0,
+  cost: 0,
+  reliability: 0,
+  chaos: 0,
+};
 
 /** Normalises a stat to 0..1 for its bar; heavy-tailed stats use a log scale. */
 function fill(key: keyof SimulatedStats, stats: SimulatedStats): number {
@@ -60,8 +76,9 @@ export function StatsPanel({
   rocket: RocketConfig;
   provider: string;
 }) {
-  const stats = useMemo(() => computeStats(rocket), [rocket]);
-  const phases = useMemo(() => stagingBreakdown(rocket), [rocket]);
+  const analysis = useAnalysis(rocket);
+  const stats = analysis?.stats ?? NO_STATS;
+  const phases = analysis?.staging ?? [];
   const jokes = useMemo(() => jokeMeters(stats), [stats]);
   return (
     <aside className="panel pointer-events-auto max-h-[calc(100vh-3rem)] w-[248px] overflow-y-auto rounded-2xl p-4">
@@ -135,7 +152,7 @@ export function StatsPanel({
 }
 
 /** Per-burn delta-v and ignition thrust-to-weight from the rocket equation. */
-function StagingTable({ phases }: { phases: BurnPhase[] }) {
+function StagingTable({ phases }: { phases: Burn[] }) {
   if (!phases.length) return null;
   return (
     <div className="mt-4 border-t border-line pt-3">
@@ -170,7 +187,7 @@ function StagingTable({ phases }: { phases: BurnPhase[] }) {
 
 /** Compact stat strip for phones. */
 export function CompactStats({ rocket }: { rocket: RocketConfig }) {
-  const stats = useMemo(() => computeStats(rocket), [rocket]);
+  const stats = useAnalysis(rocket)?.stats ?? NO_STATS;
   const [open, setOpen] = useState(false);
   const shown = open
     ? STAT_META

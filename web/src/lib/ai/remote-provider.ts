@@ -1,3 +1,4 @@
+import { analyzeRocket } from "../physics/api";
 import { type AIResult, validateModelOutput } from "./actions";
 import { buildUserMessage } from "./prompt";
 import type { AIProvider, InterpretRequest } from "./provider";
@@ -18,10 +19,11 @@ export class RemoteProvider implements AIProvider {
 
   /** Sends the request to the server and validates whatever comes back. */
   async interpret(request: InterpretRequest): Promise<AIResult> {
+    const analysis = await analyzeRocket(request.rocket);
     const response = await fetch("/api/ai", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: buildUserMessage(request) }),
+      body: JSON.stringify({ message: buildUserMessage(request, analysis) }),
     });
     if (!response.ok)
       throw new ProviderUnavailableError(
