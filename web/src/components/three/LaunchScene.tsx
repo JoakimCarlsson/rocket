@@ -28,11 +28,15 @@ const GRAVITY = 9.81;
 const PLANET_RADIUS = 600_000;
 const PLANET_CENTER = new THREE.Vector3(0, -PLANET_RADIUS, 0);
 const NORTH = new THREE.Vector3(0, 0, 1);
+const DOWN = new THREE.Vector3(0, -1, 0);
 const LOCAL_GROUND_CEILING = 8_000;
 const SMOKE_CEILING = 30_000;
 const AIR_SCALE_HEIGHT = 5_600;
+const ATMOSPHERE_HEIGHT = 70_000;
 const CAMERA_CLEARANCE = 2;
 const PITCH_LIMIT = 1.4;
+const ORBIT_PITCH = 0.5;
+const DEPARTURE_PITCH = 1.25;
 const MAX_CAMERA_DISTANCE = 60_000;
 
 /** Cue names the launch scene reports to the UI. */
@@ -149,6 +153,21 @@ const CELESTIAL = {
   sun: { color: "#ffd27a", emissive: "#ff9a2a" },
 } as const;
 
+/**
+ * Moves a camera-centred backdrop (sky, stars) onto the camera just before it
+ * draws, after every frame update has moved the camera, so it never lags a
+ * fast-moving camera by a frame.
+ */
+function centerOnCamera(
+  this: THREE.Object3D,
+  _renderer: THREE.WebGLRenderer,
+  _scene: THREE.Scene,
+  camera: THREE.Camera,
+) {
+  this.position.copy(camera.position);
+  this.updateMatrixWorld();
+}
+
 /** Deterministic noise used for flame flicker. */
 function wiggle(t: number, seed: number): number {
   return (
@@ -186,6 +205,7 @@ export function LaunchScene({
   const stars = useRef<THREE.PointsMaterial>(null);
   const celestial = useRef<THREE.Group>(null);
   const localGround = useRef<THREE.Group>(null);
+  const atmosphere = useRef<THREE.ShaderMaterial>(null);
   const low = quality === "low";
 
   const fields = useMemo(() => {
@@ -211,12 +231,24 @@ export function LaunchScene({
         depthWrite: false,
       }),
     );
-    return { fire, smoke };
+    const exhaust = new ParticleField(
+      low ? 500 : 1200,
+      new THREE.IcosahedronGeometry(1, 0),
+      new THREE.MeshBasicMaterial({
+        color: "#ffffff",
+        blending: THREE.AdditiveBlending,
+        transparent: true,
+        depthWrite: false,
+        toneMapped: false,
+      }),
+    );
+    return { fire, smoke, exhaust };
   }, [low]);
   useEffect(
     () => () => {
       fields.fire.dispose();
       fields.smoke.dispose();
+      fields.exhaust.dispose();
     },
     [fields],
   );
@@ -266,6 +298,8 @@ export function LaunchScene({
     target: 100,
     fov: 38,
     dragging: false,
+    touched: false,
+    startPitch: -0.15,
     lastX: 0,
     lastY: 0,
   });
@@ -275,7 +309,7 @@ export function LaunchScene({
     const distance = Math.max(70, layout.height * 1.6) * 1.16;
     const focusHeight = PAD_TOP + layout.height * 0.45;
     v.distance = v.target = distance;
-    v.pitch = Math.asin(
+    v.pitch = v.startPitch = Math.asin(
       THREE.MathUtils.clamp((8 - focusHeight) / distance, -0.9, 0.9),
     );
     const cam = camera as THREE.PerspectiveCamera;
@@ -298,6 +332,7 @@ export function LaunchScene({
     const nearest = layout.height * 0.6 + 10;
     const down = (e: PointerEvent) => {
       v.dragging = true;
+      v.touched = true;
       v.lastX = e.clientX;
       v.lastY = e.clientY;
       el.setPointerCapture(e.pointerId);
@@ -358,7 +393,13 @@ export function LaunchScene({
     firing.current = next;
   };
 
-  /** Detaches a segment from the vehicle and turns it into free-falling debris. */
+  /** The vehicle's velocity in flight metres per second, without the time warp. */
+  const flightVelocity = () => {
+    const s = sim.current;
+    return s.vel.clone().divideScalar(Math.max(1, s.warp));
+  };
+
+  /** Detaches a segment from the vehicle and turns it into free-falling debris, moving at `velocity` in flight metres per second. */
   const detach = (
     key: string,
     velocity: THREE.Vector3,
@@ -371,6 +412,7 @@ export function LaunchScene({
     if (!group || !segment || !s.attached.has(key) || !vehicle.current) return;
     s.attached.delete(key);
     group.visible = false;
+    if (firing.current.has(key)) fields.exhaust.clear();
     vehicle.current.updateMatrixWorld(true);
     const position = segment.centroid
       .clone()
@@ -402,9 +444,8 @@ export function LaunchScene({
         .setY(0)
         .normalize()
         .multiplyScalar(18 + Math.random() * 24);
-      const velocity = s.vel
-        .clone()
-        .multiplyScalar(0.4)
+      const velocity = flightVelocity()
+        .multiplyScalar(0.9)
         .add(out)
         .add(
           new THREE.Vector3(
@@ -492,7 +533,7 @@ export function LaunchScene({
               .multiplyScalar(7);
             detach(
               key,
-              s.vel.clone().add(out),
+              flightVelocity().add(out),
               new THREE.Vector3(out.z * 0.05, 0, -out.x * 0.08),
             );
           });
@@ -500,7 +541,7 @@ export function LaunchScene({
       case "stage_sep":
         detach(
           `stage:${event.stageId}`,
-          s.vel.clone().sub(dir.clone().multiplyScalar(6)),
+          flightVelocity().sub(dir.clone().multiplyScalar(6)),
           new THREE.Vector3(0.2, 0, 0.35),
         );
         s.pauseUntil = s.clock + 0.7;
@@ -513,8 +554,7 @@ export function LaunchScene({
         const out = seg.centroid.clone().setY(0).normalize().multiplyScalar(22);
         detach(
           key,
-          s.vel
-            .clone()
+          flightVelocity()
             .add(out)
             .add(new THREE.Vector3(0, 6, 0)),
           new THREE.Vector3(1.2, 2.4, out.x > 0 ? -1.8 : 1.8),
@@ -532,8 +572,7 @@ export function LaunchScene({
       case "payload_pop":
         detach(
           UPPER_SEGMENT,
-          s.vel
-            .clone()
+          flightVelocity()
             .add(dir.clone().multiplyScalar(30))
             .add(new THREE.Vector3(8, 0, 4)),
           new THREE.Vector3(2.5, 1, 3.2),
@@ -555,7 +594,7 @@ export function LaunchScene({
       case "fairing_sep":
         detach(
           FAIRING_SEGMENT,
-          s.vel.clone().add(new THREE.Vector3(9, 3, 4)),
+          flightVelocity().add(new THREE.Vector3(9, 3, 4)),
           new THREE.Vector3(0.8, 0.4, 1.4),
         );
         break;
@@ -578,9 +617,11 @@ export function LaunchScene({
   };
 
   /**
-   * Spawns flame and smoke particles from burning nozzles. Flame rides along
-   * with the vehicle; smoke is left behind in the air as a trail, spread over
-   * the distance the vehicle covered this frame so fast flight leaves no gaps.
+   * Spawns flame and smoke particles from burning nozzles. Flame lives in the
+   * vehicle's own frame, so it stays on the nozzles however fast the vehicle
+   * moves or the time warp changes; smoke is left behind in the air as a
+   * trail, spread over the distance the vehicle covered this frame so fast
+   * flight leaves no gaps.
    */
   const emitExhaust = (dt: number, dir: THREE.Vector3, altitude: number) => {
     const s = sim.current;
@@ -609,16 +650,15 @@ export function LaunchScene({
     );
     const world = new THREE.Vector3();
     const jitter = new THREE.Vector3();
+    const local = new THREE.Vector3();
     for (let i = 0; i < fireBudget; i++) {
       const n = nozzles[Math.floor(Math.random() * nozzles.length)];
-      world.set(...n.position).applyMatrix4(matrix);
       jitter.randomDirection().multiplyScalar(n.radius * 0.6);
-      fields.fire.spawn({
-        position: world.clone().add(jitter),
-        velocity: back
-          .clone()
+      local.set(...n.position).add(jitter);
+      fields.exhaust.spawn({
+        position: local,
+        velocity: DOWN.clone()
           .multiplyScalar((24 + Math.random() * 20) * (0.6 + n.power / 10))
-          .add(s.vel)
           .add(jitter.multiplyScalar(6)),
         life: 0.22 + Math.random() * 0.25,
         size: n.radius * 0.9,
@@ -656,12 +696,25 @@ export function LaunchScene({
    * A Kerbal Space Program camera: locked onto the vehicle with no lag, at a
    * yaw, pitch and distance the player can drag and scroll, measured in the
    * vehicle's local frame so the horizon stays level as it arcs over the
-   * planet.
+   * planet. Until the player drags it, it rises from the low pad view to look
+   * down past the vehicle at the planet as the climb goes on, and on a
+   * departure looks almost straight down so the shrinking planet stays in view.
    */
   const moveCamera = (cam: THREE.PerspectiveCamera, dt: number) => {
     const s = sim.current;
     const v = view.current;
     v.distance = THREE.MathUtils.damp(v.distance, v.target, 5, dt);
+    if (!v.touched) {
+      const altitude = altitudeOf(s.lookAt);
+      const climb = THREE.MathUtils.smoothstep(altitude, 1_500, 40_000);
+      const leave = THREE.MathUtils.smoothstep(altitude, 150_000, 1_500_000);
+      const wanted = THREE.MathUtils.lerp(
+        THREE.MathUtils.lerp(v.startPitch, ORBIT_PITCH, climb),
+        DEPARTURE_PITCH,
+        leave,
+      );
+      v.pitch = THREE.MathUtils.damp(v.pitch, wanted, 1.5, dt);
+    }
     const up = localUp(s.lookAt);
     const east = new THREE.Vector3(up.y, -up.x, 0);
     const offset = east
@@ -681,6 +734,10 @@ export function LaunchScene({
     cam.up.copy(up);
     cam.lookAt(s.lookAt);
     cam.near = THREE.MathUtils.clamp(v.distance * 0.01, 0.3, 200);
+    cam.far = Math.max(
+      4_000_000,
+      3 * altitudeOf(cam.position) + 2 * PLANET_RADIUS,
+    );
     cam.fov = THREE.MathUtils.damp(cam.fov, v.fov, 2, dt);
     cam.updateProjectionMatrix();
   };
@@ -732,16 +789,18 @@ export function LaunchScene({
       s.eventIndex++;
     }
 
-    const burning = s.alive && s.thrusting && s.clock >= s.pauseUntil;
+    const point = telemetryAt(plan, t);
+    const wanted = s.lifted ? point.throttle : 1;
+    const burning =
+      s.alive && s.thrusting && s.clock >= s.pauseUntil && wanted > 0.01;
     s.throttle = THREE.MathUtils.damp(
       s.throttle,
-      burning ? 1 : 0,
+      burning ? wanted : 0,
       burning ? 4 : 10,
       dt,
     );
     flags.current.engineGlow = s.throttle;
 
-    const point = telemetryAt(plan, t);
     s.warp = point.warp;
     let dir = direction(s.angle);
     if (s.lifted && s.alive) {
@@ -782,7 +841,8 @@ export function LaunchScene({
     const altitude = point.altitude;
     const air = airAt(altitude);
     emitExhaust(dt, dir, altitude);
-    fields.fire.update(dt, 1.6 * air, 2 * air, 0.5);
+    fields.fire.update(dt, 1.6, 2, 0.5);
+    fields.exhaust.update(dt, 0, 0, Number.NEGATIVE_INFINITY);
     fields.smoke.update(dt, 0.45, 1.6 * air, 1.5);
 
     if (engineLight.current) {
@@ -804,6 +864,12 @@ export function LaunchScene({
       localUp(cam.position, sky.current.uniforms.uUp.value);
     }
     if (stars.current) stars.current.opacity = space;
+    if (atmosphere.current)
+      atmosphere.current.uniforms.uSpace.value = THREE.MathUtils.smoothstep(
+        cameraAltitude,
+        ATMOSPHERE_HEIGHT * 0.3,
+        ATMOSPHERE_HEIGHT,
+      );
     if (scene.fog instanceof THREE.Fog) {
       const haze = 1 - THREE.MathUtils.smoothstep(altitude, 20_000, 70_000);
       scene.fog.near = 300 + altitude * 1.5;
@@ -877,6 +943,7 @@ export function LaunchScene({
       />
 
       <Planet />
+      <Atmosphere material={atmosphere} />
       <group ref={localGround}>
         <Ground />
         <Pad height={layout.height} />
@@ -907,6 +974,7 @@ export function LaunchScene({
             />
           </group>
         ))}
+        <primitive object={fields.exhaust.mesh} />
       </group>
 
       {debris.map((d) => (
@@ -1033,9 +1101,9 @@ function Flames({
 
 /**
  * A separated chunk falling (or, if still burning, flying) under simple
- * physics on the true-scale planet. `warp` is the playback's current time
- * warp, which scales its gravity, drag and thrust to match what the vehicle
- * shows on screen.
+ * physics on the true-scale planet. Its velocity is in flight metres per
+ * second; `warp` is the playback's current time warp, so it keeps pace with
+ * the vehicle however the warp changes.
  */
 function Debris({
   spec,
@@ -1074,10 +1142,10 @@ function Debris({
     const altitude = altitudeOf(s.pos);
     const nose = new THREE.Vector3(0, 1, 0).applyQuaternion(s.quat);
     const down = localUp(s.pos).negate();
-    if (burning) s.vel.addScaledVector(nose, 30 * w * w * dt);
-    s.vel.addScaledVector(down, GRAVITY * w * w * dt);
+    if (burning) s.vel.addScaledVector(nose, 30 * w * dt);
+    s.vel.addScaledVector(down, GRAVITY * w * dt);
     s.vel.multiplyScalar(1 - Math.min(0.5, 0.3 * airAt(altitude) * w * dt));
-    s.pos.addScaledVector(s.vel, dt);
+    s.pos.addScaledVector(s.vel, w * dt);
     if (altitude < 2) {
       s.pos.addScaledVector(down, altitude - 2);
       s.vel.multiplyScalar(0.25);
@@ -1153,10 +1221,12 @@ function Sky({
     }),
     [],
   );
-  const group = useRef<THREE.Mesh>(null);
-  useFrame(({ camera }) => group.current?.position.copy(camera.position));
   return (
-    <mesh ref={group} renderOrder={-1}>
+    <mesh
+      renderOrder={-1}
+      frustumCulled={false}
+      onBeforeRender={centerOnCamera}
+    >
       <sphereGeometry args={[9000, 32, 16]} />
       <shaderMaterial
         ref={material}
@@ -1193,10 +1263,12 @@ function Starfield({
     g.setAttribute("position", new THREE.BufferAttribute(points, 3));
     return g;
   }, []);
-  const group = useRef<THREE.Points>(null);
-  useFrame(({ camera }) => group.current?.position.copy(camera.position));
   return (
-    <points ref={group} geometry={geometry}>
+    <points
+      geometry={geometry}
+      frustumCulled={false}
+      onBeforeRender={centerOnCamera}
+    >
       <pointsMaterial
         ref={material}
         size={1.6}
@@ -1221,9 +1293,10 @@ function Planet() {
     const g = new THREE.SphereGeometry(PLANET_RADIUS - 1.5, 384, 192);
     const position = g.attributes.position;
     const colors = new Float32Array(position.count * 3);
-    const land = new THREE.Color("#3a3a2f");
-    const dry = new THREE.Color("#5b5242");
-    const sea = new THREE.Color("#274a5e");
+    const land = new THREE.Color("#4f6b38");
+    const dry = new THREE.Color("#7a7a4a");
+    const desert = new THREE.Color("#3a3a2f");
+    const sea = new THREE.Color("#2a5f8f");
     const c = new THREE.Color();
     for (let i = 0; i < position.count; i++) {
       const x = position.getX(i) / PLANET_RADIUS;
@@ -1235,7 +1308,10 @@ function Planet() {
         Math.sin(z * 13.3 + y * 3.1) * 0.5;
       const nearPad = y > 0.9999;
       if (!nearPad && continents < -0.25) c.copy(sea);
-      else c.copy(land).lerp(dry, 0.5 + 0.5 * Math.sin(x * 41 + z * 37));
+      else
+        c.copy(land)
+          .lerp(dry, 0.5 + 0.5 * Math.sin(x * 41 + z * 37))
+          .lerp(desert, THREE.MathUtils.smoothstep(y, 0.998, 0.99995));
       colors.set([c.r, c.g, c.b], i * 3);
     }
     g.setAttribute("color", new THREE.BufferAttribute(colors, 3));
@@ -1245,6 +1321,49 @@ function Planet() {
   return (
     <mesh geometry={geometry} position={PLANET_CENTER}>
       <meshStandardMaterial vertexColors roughness={0.95} />
+    </mesh>
+  );
+}
+
+/**
+ * The thin blue glow of the atmosphere along the planet's horizon: each
+ * pixel glows by how closely its view ray grazes the surface. `uSpace`
+ * fades it in as the camera leaves the air.
+ */
+function Atmosphere({
+  material,
+}: {
+  material: React.RefObject<THREE.ShaderMaterial | null>;
+}) {
+  const uniforms = useMemo(
+    () => ({
+      uSpace: { value: 0 },
+      uColor: { value: new THREE.Color("#5fa8ff") },
+      uCenter: { value: PLANET_CENTER.clone() },
+      uRadius: { value: PLANET_RADIUS },
+    }),
+    [],
+  );
+  return (
+    <mesh position={PLANET_CENTER} renderOrder={1}>
+      <sphereGeometry args={[PLANET_RADIUS + ATMOSPHERE_HEIGHT, 192, 96]} />
+      <shaderMaterial
+        ref={material}
+        side={THREE.BackSide}
+        transparent
+        depthWrite={false}
+        blending={THREE.AdditiveBlending}
+        fog={false}
+        uniforms={uniforms}
+        vertexShader={`varying vec3 vWorld;
+          void main(){ vec4 world = modelMatrix * vec4(position,1.0); vWorld = world.xyz;
+            gl_Position = projectionMatrix * viewMatrix * world; }`}
+        fragmentShader={`uniform float uSpace; uniform vec3 uColor; uniform vec3 uCenter; uniform float uRadius; varying vec3 vWorld;
+          void main(){ vec3 ray = normalize(vWorld - cameraPosition); vec3 toCenter = uCenter - cameraPosition;
+            float miss = length(toCenter - ray * dot(toCenter, ray)) - uRadius;
+            float glow = exp(-max(0.0, miss) / 9000.0);
+            gl_FragColor = vec4(uColor * glow * uSpace, 1.0); }`}
+      />
     </mesh>
   );
 }

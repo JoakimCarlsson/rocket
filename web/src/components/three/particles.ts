@@ -124,6 +124,15 @@ export class ParticleField {
     if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
   }
 
+  /** Retires every live particle at once. */
+  clear(): void {
+    this.age.set(this.life);
+    this.matrix.makeScale(0, 0, 0);
+    for (let i = 0; i < this.capacity; i++)
+      this.mesh.setMatrixAt(i, this.matrix);
+    this.mesh.instanceMatrix.needsUpdate = true;
+  }
+
   /** Releases GPU resources. */
   dispose(): void {
     this.mesh.geometry.dispose();

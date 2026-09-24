@@ -38,8 +38,9 @@ export interface LaunchPlan extends Omit<Flight, "duration"> {
 
 /**
  * Where the vehicle is at one moment of the flight. `climb` and `ground` are
- * the rates of change of altitude and downrange in m/s of flight time, and
- * `warp` is how many flight seconds pass per animation second.
+ * the rates of change of altitude and downrange in m/s of flight time,
+ * `throttle` is how hard the engines burn, 0 to 1, and `warp` is how many
+ * flight seconds pass per animation second.
  */
 export interface FlightPoint {
   altitude: number;
@@ -48,6 +49,7 @@ export interface FlightPoint {
   pitch: number;
   climb: number;
   ground: number;
+  throttle: number;
   warp: number;
 }
 
@@ -315,6 +317,7 @@ function between(a: FlightSample, b: FlightSample, t: number): FlightPoint {
     pitch: a.pitch + pitchDelta(a.pitch, b.pitch) * s,
     climb: slope(a.altitude, a.climb, b.altitude, b.climb),
     ground: slope(a.downrange, a.ground, b.downrange, b.ground),
+    throttle: b.throttle,
     warp: 1,
   };
 }
@@ -328,6 +331,7 @@ function onPad(samples: FlightSample[]): FlightPoint {
     pitch: samples[0]?.pitch ?? 0,
     climb: 0,
     ground: 0,
+    throttle: 1,
     warp: 1,
   };
 }
@@ -354,7 +358,13 @@ export function telemetryAt(
   if (i >= samples.length) {
     const last = samples[samples.length - 1];
     if (plan.report.grade === "failure")
-      return { ...between(last, last, last.t), climb: 0, ground: 0, warp };
+      return {
+        ...between(last, last, last.t),
+        climb: 0,
+        ground: 0,
+        throttle: 0,
+        warp,
+      };
     const dt = t - last.t;
     return {
       altitude: Math.max(0, last.altitude + last.climb * dt),
@@ -363,6 +373,7 @@ export function telemetryAt(
       pitch: last.pitch,
       climb: last.climb,
       ground: last.ground,
+      throttle: 0,
       warp,
     };
   }

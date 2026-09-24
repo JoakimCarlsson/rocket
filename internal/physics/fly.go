@@ -7,43 +7,53 @@ import (
 
 // Autopilot and structure settings.
 const (
-	targetApoapsis    = 80_000.0
-	turnStartSpeed    = 60.0
-	turnStartAlt      = 1_000.0
-	aoaBudget         = 40_000.0
-	minTurnAoA        = 1 * math.Pi / 180
-	coastAttitudeAlt  = 60_000.0
-	coastAttitudeQ    = 300.0
-	holdTime          = 15.0
-	safeClearance     = 5_000.0
-	climbTime         = 30.0
-	maxHoldClimb      = 150.0
-	circularizeLead   = 1.0
-	maxCoast          = 150.0
-	circularized      = 3_000.0
-	flattenAltitude   = 45_000.0
-	flattenClimb      = 30.0
-	reburnMargin      = 1_500.0
-	qThrottle         = 35_000.0
-	pullUpAltitude    = 5_000.0
-	pullUpPath        = 40 * math.Pi / 180
-	minTimeToApoapsis = 40.0
-	minThrottle       = 0.35
-	maxTime           = 3000.0
-	sampleEvery       = 0.25
-	coastSampleEvery  = 2.0
-	gimbalRange       = 6 * math.Pi / 180
-	controlBand       = 0.8
-	controlDamping    = 0.9
-	wheelAccel        = 0.04
-	wheelTorque       = 3e5
-	hopApoapsis       = 90_000.0
-	lostControlAoA    = 25 * math.Pi / 180
-	qAlphaLimit       = 250_000.0
-	hardQLimit        = 90_000.0
-	stagingCoast      = 1.0
-	fairingAltitude   = 50_000.0
-	liftoffTimeout    = 8.0
+	targetApoapsis     = 80_000.0
+	turnStartSpeed     = 60.0
+	turnStartAlt       = 1_000.0
+	aoaBudget          = 40_000.0
+	minTurnAoA         = 1 * math.Pi / 180
+	maxTurnAoA         = 8 * math.Pi / 180
+	maxPullUpAoA       = 12 * math.Pi / 180
+	coastAttitudeQ     = 300.0
+	coastMaxQ          = 1_000.0
+	holdTime           = 15.0
+	safeClearance      = 5_000.0
+	climbTime          = 30.0
+	maxHoldClimb       = 150.0
+	maxHoldLift        = 0.6
+	maxCircularizeLean = 20 * math.Pi / 180
+	circularizeLead    = 1.0
+	circularized       = 3_000.0
+	overshoot          = 20_000.0
+	maxCoast           = 900.0
+	orbitMargin        = 2_000.0
+	flattenAltitude    = 45_000.0
+	flattenClimb       = 30.0
+	reburnMargin       = 1_500.0
+	qThrottle          = 35_000.0
+	pullUpAltitude     = 5_000.0
+	pullUpPath         = 40 * math.Pi / 180
+	minTimeToApoapsis  = 40.0
+	minThrottle        = 0.35
+	maxTime            = 3000.0
+	sampleEvery        = 0.25
+	coastSampleEvery   = 2.0
+	gimbalRange        = 6 * math.Pi / 180
+	controlBand        = 0.8
+	controlDamping     = 0.9
+	wheelAccel         = 0.04
+	wheelTorque        = 3e5
+	rcsQ               = 3_000.0
+	hopApoapsis        = 90_000.0
+	lostControlAoA     = 25 * math.Pi / 180
+	qAlphaLimit        = 250_000.0
+	hardQLimit         = 90_000.0
+	stagingCoast       = 1.0
+	fairingAltitude    = 50_000.0
+	liftoffTimeout     = 8.0
+	departTail         = 3_000.0
+	departStep         = 10.0
+	departAltitude     = 5_000_000.0
 )
 
 // phase is what the ascent autopilot is doing.
@@ -123,6 +133,7 @@ type flyer struct {
 	phase      phase
 	stageIndex int
 	turnFrom   float64
+	lean       float64
 	pauseUntil float64
 	lifted     bool
 	lost       bool
@@ -148,7 +159,29 @@ func fly(r *Rocket, v *vehicle, rng *rand.Rand, chaos float64, plan flightPlan) 
 	for f.end == "" && f.t < maxTime {
 		f.step()
 	}
+	if f.end == endGoal && departures[f.goal] {
+		f.departureTail()
+	}
 	return f.result()
+}
+
+// departures are the destinations reached by leaving the planet.
+var departures = map[string]bool{"moon": true, "mars": true, "sun": true}
+
+// departureTail keeps flying a departing vehicle, engines off and nose
+// prograde, for a while after its injection burn, so the playback shows it
+// climbing away and the planet shrinking behind it rather than stopping in
+// low orbit.
+func (f *flyer) departureTail() {
+	stop := f.t + departTail
+	coast := forces{mass: 1, inertia: 1, wind: f.weather}
+	for f.t < stop && f.s.pos.length()-planetRadius < departAltitude {
+		f.s = rk4(f.s, coast, departStep)
+		f.s.phi = math.Atan2(f.s.vel.y, f.s.vel.x)
+		f.s.omega = 0
+		f.t += departStep
+		f.samples = append(f.samples, f.sample(0, 0))
+	}
 }
 
 // newFlyer puts the vehicle on the pad and rolls the day's dice: weather,
@@ -370,31 +403,57 @@ func (f *flyer) advancePhase(n nav, mass float64) {
 		}
 	case phaseAscent:
 		switch {
-		case o.apogee >= targetApoapsis && o.timeToApoapsis > maxCoast:
-			f.phase = phaseCircularize
-		case o.apogee >= targetApoapsis:
+		case o.apogee >= targetApoapsis+overshoot,
+			o.apogee >= targetApoapsis && f.canCoast(n):
 			f.phase = phaseCoast
 		case alt > flattenAltitude && n.climb < flattenClimb:
-			f.phase = phaseCircularize
+			f.startCircularizing()
 		}
 	case phaseCoast:
 		_, duration := f.circularizeBurn(n, mass)
 		switch {
 		case alt < atmosphereTop && o.apogee < targetApoapsis-reburnMargin:
 			f.phase = phaseAscent
-		case o.timeToApoapsis <= duration/2+circularizeLead:
-			f.phase = phaseCircularize
+		case o.timeToApoapsis <= duration/2+circularizeLead,
+			o.timeToApoapsis > maxCoast:
+			f.startCircularizing()
 		}
 	case phaseHop:
 		if o.apogee >= hopApoapsis {
 			f.phase = phasePassive
 		}
 	case phaseCircularize:
-		enough := math.Min(math.Min(o.apogee, targetApoapsis)-circularized, atmosphereTop+safeClearance)
-		if o.bound && o.perigee >= atmosphereTop && o.perigee >= enough {
+		round := o.perigee >= math.Min(o.apogee, targetApoapsis)-circularized
+		level := o.perigee >= alt-circularized
+		overshooting := o.apogee > targetApoapsis+overshoot && o.perigee >= atmosphereTop+orbitMargin
+		if o.bound && o.perigee >= atmosphereTop && (round || level || overshooting) {
 			f.orbitReached()
 		}
 	}
+}
+
+// startCircularizing begins the circularisation burn, free to lean towards
+// prograde at first.
+func (f *flyer) startCircularizing() {
+	f.phase = phaseCircularize
+	f.lean = 1
+}
+
+// canCoast reports whether it is safe to shut the liquid engines down: no
+// solid motor is still pushing, and either the air is thin or the vehicle is
+// aerodynamically stable, so it will not be turned over once the gimbals stop
+// steering.
+func (f *flyer) canCoast(n nav) bool {
+	for _, g := range f.burning() {
+		if !g.throttleable {
+			return false
+		}
+	}
+	if n.aero.q <= coastMaxQ {
+		return true
+	}
+	_, cm, _ := f.v.massProperties(f.attached, f.fuel)
+	return f.cp < cm
 }
 
 // orbitReached finishes the ascent: an orbit mission is done, anything
@@ -431,8 +490,9 @@ func (f *flyer) throttle(n nav, mass, fixed, variable float64) float64 {
 }
 
 // elevation is the thrust direction the autopilot wants, as an angle above
-// the local horizon. accel is the thrust acceleration now; while coasting the
-// vehicle lines up for the burn to come using the next stage's.
+// the local horizon. accel is the thrust acceleration now. While coasting the
+// vehicle holds prograde, as a player would, and only swings round once the
+// circularisation burn lights and its gimbals can turn it.
 func (f *flyer) elevation(n nav, accel, mass float64) float64 {
 	switch f.phase {
 	case phaseAscent:
@@ -441,13 +501,12 @@ func (f *flyer) elevation(n nav, accel, mass float64) float64 {
 		program := math.Pi / 2 * (1 - math.Pow(fraction, f.plan.profile.shape))
 		return clamp(f.limitAoA(n, program, f.pullUp(n)), 0, math.Pi/2)
 	case phaseCoast:
-		if n.aero.altitude < coastAttitudeAlt && n.aero.q > coastAttitudeQ {
+		if n.aero.q > coastAttitudeQ {
 			return n.airPath
 		}
-		thrust, _ := f.stageAhead()
-		return f.holdAltitude(n, thrust/mass)
+		return n.inertPath
 	case phaseCircularize:
-		return f.holdAltitude(n, accel)
+		return f.circularizeAttitude(n, accel, mass)
 	case phaseDepart:
 		return n.inertPath
 	case phasePassive:
@@ -457,8 +516,10 @@ func (f *flyer) elevation(n nav, accel, mass float64) float64 {
 }
 
 // limitAoA keeps a commanded elevation within the angle of attack the air
-// allows: generous in thin air, a degree or two through max-Q. pullUp, from
-// 0 to 1, raises the nose above the flight path by up to twice that angle.
+// allows: up to maxTurnAoA in thin air, a degree or two through max-Q, so
+// the rocket always points roughly where it is going. pullUp, from 0 to 1,
+// raises the nose above the flight path by up to twice that angle, never
+// more than maxPullUpAoA.
 // A path drifting west of vertical counts as vertical, so the turn always
 // goes east.
 func (f *flyer) limitAoA(n nav, want, pullUp float64) float64 {
@@ -466,12 +527,12 @@ func (f *flyer) limitAoA(n nav, want, pullUp float64) float64 {
 		return want
 	}
 	path := math.Min(n.airPath, math.Pi/2)
-	limit := clamp(aoaBudget/math.Max(1, n.aero.q)*math.Pi/180, minTurnAoA, math.Pi/2)
+	limit := clamp(aoaBudget/math.Max(1, n.aero.q)*math.Pi/180, minTurnAoA, maxTurnAoA)
 	limited := path + clamp(want-path, -limit, limit)
 	if pullUp <= 0 {
 		return limited
 	}
-	return math.Max(limited, path+2*limit*pullUp)
+	return math.Max(limited, path+math.Min(2*limit, maxPullUpAoA)*pullUp)
 }
 
 // pullUp is how hard the ascent should raise its nose, from 0 to 1, because
@@ -486,6 +547,23 @@ func (f *flyer) pullUp(n nav) float64 {
 	return clamp((minTimeToApoapsis-n.orbit.timeToApoapsis)/minTimeToApoapsis, 0, 1)
 }
 
+// circularizeAttitude is the circularisation burn's thrust direction. A burn
+// that must start well before apoapsis starts up to maxCircularizeLean
+// above holding altitude, towards the prograde path, and leans over as
+// apoapsis nears, rather than lying flat while the vehicle is still climbing
+// hard. The lean only ever decreases, so the burn cannot chase an apoapsis
+// it keeps raising.
+func (f *flyer) circularizeAttitude(n nav, accel, mass float64) float64 {
+	hold := f.holdAltitude(n, accel)
+	_, duration := f.circularizeBurn(n, mass)
+	if math.IsInf(duration, 0) || n.climb <= 0 {
+		f.lean = 0
+		return hold
+	}
+	f.lean = math.Min(f.lean, clamp(n.orbit.timeToApoapsis/(duration/2+circularizeLead), 0, 1))
+	return hold + clamp(n.inertPath-hold, 0, maxCircularizeLean)*f.lean
+}
+
 // holdAltitude points the thrust mostly horizontal, tilted just enough to
 // bring the climb rate to what the burn wants over holdTime and to make up
 // the gravity that orbital speed does not yet balance. Below the edge of
@@ -497,7 +575,7 @@ func (f *flyer) holdAltitude(n nav, accel float64) float64 {
 	wantClimb := clamp((atmosphereTop+safeClearance-n.aero.altitude)/climbTime, 0, maxHoldClimb)
 	deficit := gravityAt(n.radius) - n.across*n.across/n.radius
 	vertical := deficit + (wantClimb-n.climb)/holdTime
-	return math.Asin(clamp(vertical/accel, -0.1, 0.9))
+	return math.Asin(clamp(vertical/accel, -0.1, maxHoldLift))
 }
 
 // step advances the flight by one integration step.
@@ -614,8 +692,10 @@ func (f *flyer) step() {
 
 // control is the attitude controller: a critically damped pitch loop that
 // asks the gimbal for torque first and the reaction wheels for the rest,
-// feeding forward the aerodynamic torque it expects. The wheels have a fixed
-// torque, so they steer a small rocket briskly and a big one barely.
+// feeding forward the aerodynamic torque it expects. In thick air the wheels
+// have only a fixed torque, so a big unstable rocket cannot be held; as the
+// air thins below rcsQ the wheels and RCS together can hold any vehicle, as
+// SAS does in Kerbal Space Program.
 // saturated reports that both asked for more than they have.
 func (f *flyer) control(command, dt float64, aero aeroState, cm, inertia, gimballed, arm float64) (gimbal, wheels float64, saturated bool) {
 	commandRate := 0.0
@@ -638,7 +718,8 @@ func (f *flyer) control(command, dt float64, aero aeroState, cm, inertia, gimbal
 		gimbal = clamp((want-aeroTorque)/(gimballed*arm), -math.Sin(gimbalRange), math.Sin(gimbalRange))
 	}
 	rest := want - aeroTorque - gimbal*gimballed*arm
-	wheel := math.Min(inertia*wheelAccel, wheelTorque)
+	thin := clamp(1-aero.q/rcsQ, 0, 1)
+	wheel := math.Max(wheelTorque, inertia*wheelAccel*thin)
 	return gimbal, clamp(rest, -wheel, wheel), math.Abs(rest) > wheel
 }
 
