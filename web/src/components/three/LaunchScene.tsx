@@ -1,5 +1,6 @@
 "use client";
 
+import { Environment } from "@react-three/drei";
 import { useFrame, useThree } from "@react-three/fiber";
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
@@ -18,8 +19,15 @@ import {
   type LaunchPlan,
   telemetryAt,
 } from "@/lib/sim/playback";
+import { fbm, ridged } from "./noise";
 import { PartMesh, type RenderFlags, RenderFlagsProvider } from "./PartMesh";
-import { ParticleField } from "./particles";
+import { billboardGeometry, ParticleField } from "./particles";
+import {
+  flameMaterial,
+  glowMaterial,
+  SUN_DIRECTION,
+  smokeMaterial,
+} from "./vfx";
 
 /** Seconds of countdown before ignition. */
 export const COUNTDOWN_SECONDS = 3.6;
@@ -146,6 +154,24 @@ function placeOnPlanet(
   return THREE.MathUtils.degToRad(point.pitch) + theta;
 }
 
+const SUN_COLOR = new THREE.Color("#ffc896");
+const WHITE = new THREE.Color("#ffffff");
+
+/** Lets every lit, opaque mesh under an object cast and receive shadows. */
+function castShadows(root: THREE.Object3D) {
+  root.traverse((object) => {
+    if (
+      object instanceof THREE.Mesh &&
+      !(object instanceof THREE.InstancedMesh) &&
+      object.material instanceof THREE.MeshStandardMaterial &&
+      !object.material.transparent
+    ) {
+      object.castShadow = true;
+      object.receiveShadow = true;
+    }
+  });
+}
+
 /** Surface colours for the body shown on arrival. */
 const CELESTIAL = {
   moon: { color: "#d9d6cf", emissive: "#3a3833" },
@@ -201,6 +227,7 @@ export function LaunchScene({
   const [debris, setDebris] = useState<DebrisSpec[]>([]);
   const flash = useRef<THREE.PointLight>(null);
   const engineLight = useRef<THREE.PointLight>(null);
+  const sun = useRef<THREE.DirectionalLight>(null);
   const sky = useRef<THREE.ShaderMaterial>(null);
   const stars = useRef<THREE.PointsMaterial>(null);
   const celestial = useRef<THREE.Group>(null);
@@ -209,41 +236,16 @@ export function LaunchScene({
   const low = quality === "low";
 
   const fields = useMemo(() => {
-    const fire = new ParticleField(
-      low ? 600 : 1400,
-      new THREE.IcosahedronGeometry(1, 0),
-      new THREE.MeshBasicMaterial({
-        color: "#ffffff",
-        blending: THREE.AdditiveBlending,
-        transparent: true,
-        depthWrite: false,
-        toneMapped: false,
-      }),
-    );
+    const fire = new ParticleField(low ? 600 : 1400, glowMaterial(1.2));
     const smoke = new ParticleField(
-      low ? 500 : 1100,
-      new THREE.IcosahedronGeometry(1, 1),
-      new THREE.MeshStandardMaterial({
-        color: "#ffffff",
-        roughness: 1,
-        transparent: true,
-        opacity: 0.55,
-        depthWrite: false,
-      }),
+      low ? 900 : 2400,
+      smokeMaterial({ opacity: 0.8 }),
     );
-    const exhaust = new ParticleField(
-      low ? 500 : 1200,
-      new THREE.IcosahedronGeometry(1, 0),
-      new THREE.MeshBasicMaterial({
-        color: "#ffffff",
-        blending: THREE.AdditiveBlending,
-        transparent: true,
-        depthWrite: false,
-        toneMapped: false,
-      }),
-    );
+    const exhaust = new ParticleField(low ? 500 : 1200, glowMaterial(0.9));
     return { fire, smoke, exhaust };
   }, [low]);
+  const smokeUniforms = (fields.smoke.mesh.material as THREE.ShaderMaterial)
+    .uniforms;
   useEffect(
     () => () => {
       fields.fire.dispose();
@@ -274,6 +276,7 @@ export function LaunchScene({
     roll: 0,
     rollVel: 0,
     warp: 1,
+    air: 1,
     thrusting: false,
     throttle: 0,
     pauseUntil: 0,
@@ -315,7 +318,7 @@ export function LaunchScene({
     const cam = camera as THREE.PerspectiveCamera;
     cam.far = 4_000_000;
     cam.updateProjectionMatrix();
-    const fog = new THREE.Fog("#e7a57a", 300, 2400);
+    const fog = new THREE.Fog(HAZE, 500, 7000);
     scene.fog = fog;
     return () => {
       if (scene.fog === fog) scene.fog = null;
@@ -633,7 +636,7 @@ export function LaunchScene({
     vehicle.current.updateMatrixWorld(true);
     const matrix = vehicle.current.matrixWorld;
     const back = dir.clone().negate();
-    const fireFrom = new THREE.Color().copy(glow).multiplyScalar(2.2);
+    const fireFrom = new THREE.Color().copy(glow).multiplyScalar(1.5);
     const fireTo = new THREE.Color(0.25, 0.04, 0);
     const smokeFrom = new THREE.Color("#d8d2c8");
     const smokeTo = new THREE.Color("#6f6a64");
@@ -690,6 +693,84 @@ export function LaunchScene({
         to: smokeTo,
       });
     }
+    if (altitude < 120) billowFromTrench(dt, altitude, smokeFrom, smokeTo);
+  };
+
+  /**
+   * Pushes the ground cloud out of both ends of the flame trench while the
+   * plume still hits the pad, thinning out as the vehicle climbs away.
+   */
+  const billowFromTrench = (
+    dt: number,
+    altitude: number,
+    from: THREE.Color,
+    to: THREE.Color,
+  ) => {
+    const s = sim.current;
+    const strength = s.throttle * (1 - altitude / 120);
+    if (Math.random() > strength) return;
+    const count = Math.ceil((low ? 1 : 2) * Math.min(2, dt * 60));
+    const origin = new THREE.Vector3();
+    const velocity = new THREE.Vector3();
+    for (let i = 0; i < count; i++) {
+      const side = Math.random() < 0.5 ? -1 : 1;
+      origin.set((Math.random() - 0.5) * 10, PAD_TOP, side * 34);
+      velocity.set(
+        (Math.random() - 0.5) * 14,
+        2 + Math.random() * 6,
+        side * (18 + Math.random() * 24),
+      );
+      fields.smoke.spawn({
+        position: origin,
+        velocity,
+        life: 6 + Math.random() * 5,
+        size: 4 * scale,
+        growth: (14 + Math.random() * 12) * scale,
+        from,
+        to,
+      });
+    }
+  };
+
+  /**
+   * Keeps the sun's shadow camera centred on the vehicle, sized to cover it
+   * and its long dusk shadow across the pad. Sunlight whitens above the air.
+   */
+  const followWithSun = (space: number) => {
+    const light = sun.current;
+    if (!light) return;
+    const reach = Math.max(70, layout.height * 1.8);
+    const focus = sim.current.lookAt;
+    light.target.position.copy(focus);
+    light.position.copy(focus).addScaledVector(SUN_DIRECTION, reach * 3);
+    light.target.updateMatrixWorld();
+    const shadow = light.shadow.camera;
+    if (shadow.right !== reach) {
+      shadow.left = shadow.bottom = -reach;
+      shadow.right = shadow.top = reach;
+      shadow.far = reach * 6;
+      shadow.updateProjectionMatrix();
+    }
+    light.color.set(SUN_COLOR).lerp(WHITE, space);
+    light.intensity = THREE.MathUtils.lerp(3.2, 4.5, space);
+  };
+
+  /**
+   * Lights the smoke with the burning engines and fades its sky and ground
+   * bounce light away as the vehicle leaves the atmosphere.
+   */
+  const shadeSmoke = (space: number) => {
+    const s = sim.current;
+    const u = smokeUniforms;
+    if (engineLight.current)
+      u.uGlowPosition.value.copy(engineLight.current.position);
+    u.uGlowColor.value.copy(glow).multiplyScalar(s.throttle * 2.4);
+    u.uGlowRange.value = 50 * scale;
+    localUp(s.lookAt, u.uUp.value);
+    u.uSkyColor.value.setRGB(0.36, 0.42, 0.56).multiplyScalar(1 - space * 0.85);
+    u.uGroundColor.value
+      .setRGB(0.22, 0.17, 0.13)
+      .multiplyScalar(1 - space * 0.9);
   };
 
   /**
@@ -759,6 +840,7 @@ export function LaunchScene({
       s.pos.y += PAD_TOP - box.min.y;
       s.base = s.pos.y;
       s.lookAt.set(0, s.base + layout.height * 0.45, 0);
+      castShadows(v);
       s.placed = true;
     }
 
@@ -840,6 +922,7 @@ export function LaunchScene({
 
     const altitude = point.altitude;
     const air = airAt(altitude);
+    s.air = air;
     emitExhaust(dt, dir, altitude);
     fields.fire.update(dt, 1.6, 2, 0.5);
     fields.exhaust.update(dt, 0, 0, Number.NEGATIVE_INFINITY);
@@ -854,11 +937,14 @@ export function LaunchScene({
       engineLight.current.color.copy(glow);
     }
     if (flash.current) flash.current.intensity *= Math.max(0, 1 - dt * 3.5);
+    const space = THREE.MathUtils.smoothstep(altitude, 8_000, 60_000);
+    followWithSun(space);
+    shadeSmoke(space);
+    scene.environmentIntensity = THREE.MathUtils.lerp(1, 0.25, space);
 
     telemetry.current = { altitude, speed: point.speed, t };
     const cam = state.camera as THREE.PerspectiveCamera;
     const cameraAltitude = altitudeOf(cam.position);
-    const space = THREE.MathUtils.smoothstep(altitude, 8_000, 60_000);
     if (sky.current) {
       sky.current.uniforms.uSpace.value = space;
       localUp(cam.position, sky.current.uniforms.uUp.value);
@@ -872,8 +958,8 @@ export function LaunchScene({
       );
     if (scene.fog instanceof THREE.Fog) {
       const haze = 1 - THREE.MathUtils.smoothstep(altitude, 20_000, 70_000);
-      scene.fog.near = 300 + altitude * 1.5;
-      scene.fog.far = (2400 + altitude * 6) / Math.max(1e-3, haze);
+      scene.fog.near = 500 + altitude * 1.5;
+      scene.fog.far = (7000 + altitude * 6) / Math.max(1e-3, haze);
     }
     if (localGround.current)
       localGround.current.visible = cameraAltitude < LOCAL_GROUND_CEILING;
@@ -921,13 +1007,17 @@ export function LaunchScene({
     <RenderFlagsProvider value={flags}>
       <Sky material={sky} />
       <Starfield material={stars} />
-      <hemisphereLight args={["#ffd7b5", "#2a2320", 0.9]} />
+      <LaunchEnvironment />
+      <hemisphereLight args={["#ffd7b5", "#2a2320", 0.35]} />
       <directionalLight
-        position={[-300, 200, 200]}
-        intensity={2.2}
-        color="#ffc28f"
+        ref={sun}
+        intensity={3.2}
+        color={SUN_COLOR}
+        castShadow
+        shadow-mapSize={low ? [1024, 1024] : [2048, 2048]}
+        shadow-bias={-0.0006}
+        shadow-normalBias={0.12}
       />
-      <ambientLight intensity={0.25} />
       <pointLight
         ref={engineLight}
         distance={400 * scale}
@@ -971,6 +1061,7 @@ export function LaunchScene({
               active={() =>
                 firing.current.has(seg.key) ? sim.current.throttle : 0
               }
+              air={() => sim.current.air}
             />
           </group>
         ))}
@@ -1008,43 +1099,43 @@ export function LaunchScene({
   );
 }
 
-/** Flame cones hanging under nozzles; `active` returns a 0..1 throttle each frame. */
+/**
+ * Flame plumes hanging under nozzles; `active` returns a 0..1 throttle each
+ * frame and `air` the share of sea-level air, which keeps the plume tight
+ * with shock diamonds low down and lets it bloom wide in vacuum.
+ */
 function Flames({
   nozzles,
   glow,
   active,
+  air = () => 1,
 }: {
   nozzles: Nozzle[];
   glow: THREE.Color;
   active: () => number;
+  air?: () => number;
 }) {
   const group = useRef<THREE.Group>(null);
   const outer = useMemo(
     () =>
-      new THREE.MeshBasicMaterial({
-        color: glow.clone().multiplyScalar(1.6),
-        transparent: true,
-        opacity: 0.75,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        toneMapped: false,
-      }),
+      flameMaterial(
+        glow.clone().multiplyScalar(1.3),
+        new THREE.Color(2.6, 2.2, 1.9),
+        0.9,
+      ),
     [glow],
   );
   const inner = useMemo(
     () =>
-      new THREE.MeshBasicMaterial({
-        color: new THREE.Color(3, 2.6, 2),
-        transparent: true,
-        opacity: 0.9,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        toneMapped: false,
-      }),
+      flameMaterial(
+        new THREE.Color(3.2, 2.6, 2),
+        new THREE.Color(6, 5.4, 4.8),
+        1,
+      ),
     [],
   );
   const cone = useMemo(() => {
-    const g = new THREE.ConeGeometry(1, 1, 20, 1, true);
+    const g = new THREE.ConeGeometry(1, 1, 32, 12, true);
     g.rotateX(Math.PI);
     g.translate(0, -0.5, 0);
     return g;
@@ -1061,22 +1152,24 @@ function Flames({
     const g = group.current;
     if (!g) return;
     const throttle = active();
+    const thin = air();
     g.visible = throttle > 0.02;
+    outer.uniforms.uTime.value = inner.uniforms.uTime.value = clock.elapsedTime;
+    outer.uniforms.uAir.value = inner.uniforms.uAir.value = Math.sqrt(thin);
+    const widen = 1 + (1 - thin) * 2.2;
     g.children.forEach((child, i) => {
       const n = nozzles[Math.floor(i / 2)];
       const isInner = i % 2 === 1;
-      const flicker = 1 + wiggle(clock.elapsedTime * 1.3, i) * 0.18;
+      const flicker = 1 + wiggle(clock.elapsedTime * 1.3, i) * 0.12;
       const length =
         n.radius *
         (5 + n.power * 0.9) *
         throttle *
         flicker *
-        (isInner ? 0.45 : 1);
-      child.scale.set(
-        n.radius * (isInner ? 0.55 : 0.95),
-        Math.max(0.001, length),
-        n.radius * (isInner ? 0.55 : 0.95),
-      );
+        (isInner ? 0.45 : 1) *
+        (1 + (1 - thin) * 0.6);
+      const width = n.radius * (isInner ? 0.55 : 0.95 * widen);
+      child.scale.set(width, Math.max(0.001, length), width);
     });
   });
   return (
@@ -1206,43 +1299,102 @@ function Debris({
   );
 }
 
-/** Dusk gradient sky, level with the local horizon, that fades to black as the rocket climbs. */
+const HAZE = "#d9a58c";
+
+const SKY_VERTEX = /* glsl */ `
+  varying vec3 vDir;
+  void main() {
+    vDir = normalize(position);
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  }
+`;
+
+const SKY_FRAGMENT = /* glsl */ `
+  uniform float uSpace;
+  uniform vec3 uUp;
+  uniform vec3 uSun;
+  uniform vec3 uHaze;
+  uniform vec3 uBelow;
+  varying vec3 vDir;
+  void main() {
+    vec3 dir = normalize(vDir);
+    float h = dot(dir, uUp);
+    float mu = dot(dir, uSun);
+    float above = max(h, 0.0);
+    float toward = pow(clamp(mu * 0.5 + 0.5, 0.0, 1.0), 4.0);
+    vec3 zenith = mix(vec3(0.05, 0.1, 0.28), vec3(0.09, 0.14, 0.32), toward);
+    vec3 horizon = mix(uHaze, vec3(1.5, 0.72, 0.32), toward);
+    vec3 sky = mix(horizon, zenith, pow(above, 0.45));
+    float forward = max(mu, 0.0);
+    sky += vec3(1.0, 0.62, 0.34) * (pow(forward, 10.0) * 0.55 + pow(forward, 300.0) * 3.5);
+    sky += vec3(60.0, 46.0, 34.0) * smoothstep(0.99955, 0.99978, mu);
+    sky = mix(sky, uBelow, smoothstep(0.0, -0.06, h));
+    float limb = pow(max(0.0, 1.0 - abs(h + 0.08) * 7.0), 5.0);
+    vec3 space = vec3(0.002, 0.003, 0.007) + vec3(0.2, 0.45, 1.0) * limb * 0.35;
+    space += vec3(80.0, 76.0, 70.0) * smoothstep(0.99988, 0.99994, mu);
+    space += vec3(1.0, 0.92, 0.8) * pow(forward, 800.0) * 2.0;
+    gl_FragColor = vec4(mix(sky, space, uSpace), 1.0);
+  }
+`;
+
+/**
+ * A dusk sky with a low sun: blue overhead, a warm glow and sun disc toward
+ * the sun, dusty haze away from it, fading to black with a thin blue limb
+ * as `uSpace` rises. `below` is what lies under the horizon.
+ */
+function skyMaterial(below: string): THREE.ShaderMaterial {
+  return new THREE.ShaderMaterial({
+    uniforms: {
+      uSpace: { value: 0 },
+      uUp: { value: new THREE.Vector3(0, 1, 0) },
+      uSun: { value: SUN_DIRECTION.clone() },
+      uHaze: { value: new THREE.Color(HAZE) },
+      uBelow: { value: new THREE.Color(below) },
+    },
+    vertexShader: SKY_VERTEX,
+    fragmentShader: SKY_FRAGMENT,
+    side: THREE.BackSide,
+    depthWrite: false,
+    fog: false,
+  });
+}
+
+/** The sky, level with the local horizon, that fades to black as the rocket climbs. */
 function Sky({
   material,
 }: {
   material: React.RefObject<THREE.ShaderMaterial | null>;
 }) {
-  const uniforms = useMemo(
-    () => ({
-      uSpace: { value: 0 },
-      uUp: { value: new THREE.Vector3(0, 1, 0) },
-      uHorizon: { value: new THREE.Color("#ffb27a") },
-      uZenith: { value: new THREE.Color("#1d2c5c") },
-    }),
-    [],
-  );
+  const sky = useMemo(() => skyMaterial(HAZE), []);
+  useEffect(() => () => sky.dispose(), [sky]);
   return (
     <mesh
       renderOrder={-1}
       frustumCulled={false}
       onBeforeRender={centerOnCamera}
+      material={sky}
+      ref={(mesh) => {
+        material.current = mesh ? sky : null;
+      }}
     >
-      <sphereGeometry args={[9000, 32, 16]} />
-      <shaderMaterial
-        ref={material}
-        side={THREE.BackSide}
-        depthWrite={false}
-        fog={false}
-        uniforms={uniforms}
-        vertexShader={`varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`}
-        fragmentShader={`uniform float uSpace; uniform vec3 uUp; uniform vec3 uHorizon; uniform vec3 uZenith; varying vec3 vDir;
-          void main(){ float h = clamp(dot(normalize(vDir), uUp), -0.2, 1.0);
-            vec3 sky = mix(uHorizon, uZenith, smoothstep(-0.02, 0.55, h));
-            sky += vec3(1.0,0.55,0.25) * pow(max(0.0, 1.0 - abs(h) * 6.0), 3.0) * 0.4;
-            vec3 space = vec3(0.01,0.012,0.03) + uHorizon * 0.05 * pow(max(0.0, 1.0 - abs(h) * 3.0), 4.0);
-            gl_FragColor = vec4(mix(sky, space, uSpace), 1.0); }`}
-      />
+      <sphereGeometry args={[9000, 64, 32]} />
     </mesh>
+  );
+}
+
+/**
+ * Image-based lighting for the launch: the same dusk sky over dark ground,
+ * rendered once into a cube map so metal and paint reflect the real sky.
+ */
+function LaunchEnvironment() {
+  const sky = useMemo(() => skyMaterial("#1c1712"), []);
+  useEffect(() => () => sky.dispose(), [sky]);
+  return (
+    <Environment resolution={256} frames={1}>
+      <mesh material={sky}>
+        <sphereGeometry args={[400, 64, 32]} />
+      </mesh>
+    </Environment>
   );
 }
 
@@ -1384,49 +1536,243 @@ function curvedDisc(radius: number, centerX: number): THREE.BufferGeometry {
   return g;
 }
 
-/** Ground around the pad with distant hills and a sea, following the planet's curve. */
-function Ground() {
-  const hills = useMemo(
-    () =>
-      Array.from({ length: 26 }, (_, i) => {
-        const a = (i / 26) * Math.PI * 2;
-        const d = 1400 + (i % 5) * 260;
-        return {
-          x: Math.cos(a) * d,
-          z: Math.sin(a) * d - 400,
-          h: 120 + ((i * 53) % 7) * 45,
-          r: 300 + ((i * 31) % 5) * 90,
-        };
-      }),
-    [],
+/** Small deterministic random generator for baked textures and scenery. */
+function seededRandom(seed: number): () => number {
+  let state = seed;
+  return () => {
+    state = (state * 16807) % 2147483647;
+    return state / 2147483647;
+  };
+}
+
+/** Wraps a painted canvas as a tiling, mipmapped colour texture. */
+function canvasTexture(
+  canvas: HTMLCanvasElement,
+  repeat: number,
+): THREE.CanvasTexture {
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(repeat, repeat);
+  texture.anisotropy = 8;
+  return texture;
+}
+
+/** Scrubland seen from above, tiled `repeat` times: patches of dry grass, dirt and rock with fine speckle. */
+function groundTexture(repeat: number): THREE.CanvasTexture {
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 512;
+  const g = get2DContext(canvas);
+  const random = seededRandom(11);
+  g.fillStyle = "#4a4634";
+  g.fillRect(0, 0, 512, 512);
+  const patches = ["#5a5638", "#3d3b2b", "#62583f", "#44482f", "#2f2d24"];
+  for (let i = 0; i < 260; i++) {
+    const x = random() * 512;
+    const y = random() * 512;
+    const r = 8 + random() * 60;
+    g.globalAlpha = 0.16 + random() * 0.2;
+    g.fillStyle = patches[i % patches.length];
+    for (const [dx, dy] of [
+      [0, 0],
+      [-512, 0],
+      [512, 0],
+      [0, -512],
+      [0, 512],
+    ]) {
+      g.beginPath();
+      g.ellipse(
+        x + dx,
+        y + dy,
+        r,
+        r * (0.5 + random() * 0.5),
+        random() * 3,
+        0,
+        Math.PI * 2,
+      );
+      g.fill();
+    }
+  }
+  for (let i = 0; i < 9000; i++) {
+    g.globalAlpha = 0.1 + random() * 0.25;
+    g.fillStyle = random() < 0.5 ? "#23211a" : "#77705a";
+    g.fillRect(
+      random() * 512,
+      random() * 512,
+      1 + random() * 2,
+      1 + random() * 2,
+    );
+  }
+  g.globalAlpha = 1;
+  return canvasTexture(canvas, repeat);
+}
+
+/** Poured-concrete pad seen from above: slabs, stains and a burn scar around the flame trench. */
+function padTexture(): THREE.CanvasTexture {
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 1024;
+  const g = get2DContext(canvas);
+  const random = seededRandom(5);
+  g.fillStyle = "#8a857d";
+  g.fillRect(0, 0, 1024, 1024);
+  for (let i = 0; i < 14000; i++) {
+    g.globalAlpha = 0.05 + random() * 0.12;
+    g.fillStyle = random() < 0.5 ? "#5e5a54" : "#a8a39a";
+    g.fillRect(
+      random() * 1024,
+      random() * 1024,
+      2 + random() * 4,
+      2 + random() * 4,
+    );
+  }
+  g.globalAlpha = 0.5;
+  g.strokeStyle = "#4b4843";
+  g.lineWidth = 2;
+  for (let x = 0; x <= 1024; x += 64) {
+    g.beginPath();
+    g.moveTo(x, 0);
+    g.lineTo(x, 1024);
+    g.moveTo(0, x);
+    g.lineTo(1024, x);
+    g.stroke();
+  }
+  for (let i = 0; i < 40; i++) {
+    const x = random() * 1024;
+    const y = random() * 1024;
+    const r = 20 + random() * 80;
+    const stain = g.createRadialGradient(x, y, 0, x, y, r);
+    stain.addColorStop(0, "rgba(40,36,32,0.35)");
+    stain.addColorStop(1, "rgba(40,36,32,0)");
+    g.globalAlpha = 1;
+    g.fillStyle = stain;
+    g.fillRect(x - r, y - r, r * 2, r * 2);
+  }
+  const scorch = g.createRadialGradient(512, 512, 40, 512, 512, 470);
+  scorch.addColorStop(0, "rgba(10,9,8,0.95)");
+  scorch.addColorStop(0.35, "rgba(22,20,18,0.7)");
+  scorch.addColorStop(1, "rgba(22,20,18,0)");
+  g.fillStyle = scorch;
+  g.fillRect(0, 0, 1024, 1024);
+  return canvasTexture(canvas, 1);
+}
+
+const FLAT_RADIUS = 900;
+const TERRAIN_RADIUS = 9000;
+const SEA_CENTER = new THREE.Vector2(2400, 0);
+const SEA_RADIUS = 1800;
+
+/**
+ * Height of the land around the pad: flat near the pad, rolling foothills,
+ * then ridged mountains further out, sinking under the sea to the east.
+ */
+function terrainHeight(x: number, z: number): number {
+  const r = Math.hypot(x, z);
+  const rise = THREE.MathUtils.smoothstep(r, FLAT_RADIUS, 2600);
+  const hills = fbm(x / 900, z / 900, 5, 21) * 140;
+  const range = THREE.MathUtils.smoothstep(r, 2200, 5000);
+  const peaks = ridged(x / 2600, z / 2600, 6, 9) ** 1.6 * 1100;
+  const shore = THREE.MathUtils.smoothstep(
+    Math.hypot(x - SEA_CENTER.x, z - SEA_CENTER.y),
+    SEA_RADIUS - 300,
+    SEA_RADIUS + 500,
   );
-  const land = useMemo(() => curvedDisc(8000, 0), []);
-  const sea = useMemo(() => curvedDisc(1800, 2400), []);
+  return rise * (hills + peaks * range) * shore - (1 - shore) * 25;
+}
+
+/**
+ * A ring of land from the pad's flat apron out to the horizon, displaced by
+ * noise and coloured by height and slope (scrub, dirt, rock, pale crests),
+ * bent to follow the planet's curvature.
+ */
+function terrainGeometry(): THREE.BufferGeometry {
+  const g = new THREE.RingGeometry(FLAT_RADIUS, TERRAIN_RADIUS, 360, 140);
+  const position = g.attributes.position;
+  for (let i = 0; i < position.count; i++) {
+    const x = position.getX(i);
+    const y = position.getY(i);
+    const r = Math.hypot(x, y);
+    const t = Math.max(0, (r - FLAT_RADIUS) / (TERRAIN_RADIUS - FLAT_RADIUS));
+    const eased = FLAT_RADIUS + (TERRAIN_RADIUS - FLAT_RADIUS) * t ** 1.6;
+    const scale = r > 0 ? eased / r : 1;
+    const wx = x * scale;
+    const wy = y * scale;
+    position.setXYZ(
+      i,
+      wx,
+      wy,
+      terrainHeight(wx, -wy) - (wx * wx + wy * wy) / (2 * PLANET_RADIUS),
+    );
+  }
+  g.computeVertexNormals();
+  const normals = g.attributes.normal;
+  const colors = new Float32Array(position.count * 3);
+  const scrub = new THREE.Color("#5b5a3a");
+  const dirt = new THREE.Color("#6e5a40");
+  const rock = new THREE.Color("#5a4f45");
+  const crest = new THREE.Color("#b3a58f");
+  const c = new THREE.Color();
+  for (let i = 0; i < position.count; i++) {
+    const x = position.getX(i);
+    const y = position.getY(i);
+    const h = position.getZ(i) + (x * x + y * y) / (2 * PLANET_RADIUS);
+    const steep = 1 - normals.getZ(i);
+    const patch = fbm(x / 300, y / 300, 3, 5);
+    c.copy(scrub)
+      .lerp(dirt, patch)
+      .lerp(rock, THREE.MathUtils.smoothstep(steep, 0.08, 0.3))
+      .lerp(crest, THREE.MathUtils.smoothstep(h, 600, 1000) * 0.8);
+    colors.set([c.r, c.g, c.b], i * 3);
+  }
+  g.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  const uv = g.attributes.uv;
+  for (let i = 0; i < uv.count; i++)
+    uv.setXY(i, position.getX(i) / 100, position.getY(i) / 100);
+  return g;
+}
+
+/** Ground around the pad with mountains and a sea, following the planet's curve. */
+function Ground() {
+  const land = useMemo(() => curvedDisc(FLAT_RADIUS, 0), []);
+  const terrain = useMemo(() => terrainGeometry(), []);
+  const sea = useMemo(() => curvedDisc(SEA_RADIUS + 100, SEA_CENTER.x), []);
+  const dirt = useMemo(() => groundTexture(FLAT_RADIUS / 50), []);
+  const detail = useMemo(() => groundTexture(1), []);
   useEffect(
     () => () => {
       land.dispose();
+      terrain.dispose();
       sea.dispose();
+      dirt.dispose();
+      detail.dispose();
     },
-    [land, sea],
+    [land, terrain, sea, dirt, detail],
   );
   return (
     <group>
-      <mesh geometry={land} rotation={[-Math.PI / 2, 0, 0]}>
-        <meshStandardMaterial color="#3a3a2f" roughness={1} />
+      <mesh geometry={land} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <meshStandardMaterial map={dirt} roughness={1} />
+      </mesh>
+      <mesh geometry={terrain} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <meshStandardMaterial
+          vertexColors
+          map={detail}
+          color="#c8c0b0"
+          roughness={1}
+        />
       </mesh>
       <mesh
         geometry={sea}
         rotation={[-Math.PI / 2, 0, 0]}
-        position={[2400, 0.3, 0]}
+        position={[SEA_CENTER.x, 0.3, SEA_CENTER.y]}
       >
-        <meshStandardMaterial color="#274a5e" roughness={0.2} metalness={0.3} />
+        <meshPhysicalMaterial
+          color="#0d2a3d"
+          roughness={0.12}
+          metalness={0}
+          clearcoat={1}
+          clearcoatRoughness={0.05}
+        />
       </mesh>
-      {hills.map((h, i) => (
-        <mesh key={i} position={[h.x, h.h / 2 - 5, h.z]}>
-          <coneGeometry args={[h.r, h.h, 6]} />
-          <meshStandardMaterial color="#2c2a26" roughness={1} flatShading />
-        </mesh>
-      ))}
     </group>
   );
 }
@@ -1435,27 +1781,33 @@ function Ground() {
 function Pad({ height }: { height: number }) {
   const towerHeight = Math.max(40, height * 0.95);
   const light = useRef<THREE.MeshBasicMaterial>(null);
+  const concrete = useMemo(() => padTexture(), []);
+  useEffect(() => () => concrete.dispose(), [concrete]);
   useFrame(({ clock }) => {
     if (light.current)
       light.current.color.setRGB(
-        Math.sin(clock.elapsedTime * 3) > 0 ? 4 : 0.4,
-        0.1,
+        Math.sin(clock.elapsedTime * 3) > 0 ? 8 : 0.4,
+        0.15,
         0.05,
       );
   });
   return (
     <group>
-      <mesh position={[0, PAD_TOP / 2, 0]}>
-        <cylinderGeometry args={[34, 40, PAD_TOP, 48]} />
-        <meshStandardMaterial color="#6d6862" roughness={0.95} />
+      <mesh position={[0, PAD_TOP / 2, 0]} receiveShadow castShadow>
+        <cylinderGeometry args={[34, 40, PAD_TOP, 64]} />
+        <meshStandardMaterial map={concrete} roughness={0.92} />
       </mesh>
-      <mesh position={[0, PAD_TOP + 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+      <mesh
+        position={[0, PAD_TOP + 0.02, 0]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        receiveShadow
+      >
         <ringGeometry args={[18, 18.6, 64]} />
-        <meshBasicMaterial color="#e0a100" />
+        <meshStandardMaterial color="#e0a100" roughness={0.7} />
       </mesh>
-      <mesh position={[0, PAD_TOP - 0.4, 0]}>
+      <mesh position={[0, PAD_TOP - 0.4, 0]} receiveShadow>
         <boxGeometry args={[12, 1, 70]} />
-        <meshStandardMaterial color="#1b1a19" roughness={1} />
+        <meshStandardMaterial color="#141312" roughness={1} />
       </mesh>
       <group position={[-26, 0, -6]}>
         {[-2.5, 2.5].flatMap((dx) =>
@@ -1463,23 +1815,45 @@ function Pad({ height }: { height: number }) {
             <mesh
               key={`${dx}${dz}`}
               position={[dx, towerHeight / 2 + PAD_TOP, dz]}
+              castShadow
+              receiveShadow
             >
               <boxGeometry args={[0.5, towerHeight, 0.5]} />
               <meshStandardMaterial
                 color="#8a2a1a"
                 metalness={0.6}
-                roughness={0.5}
+                roughness={0.45}
               />
             </mesh>
           )),
         )}
         {Array.from({ length: Math.floor(towerHeight / 7) }, (_, i) => (
-          <mesh key={i} position={[0, PAD_TOP + i * 7 + 3.5, 0]}>
+          <mesh
+            key={i}
+            position={[0, PAD_TOP + i * 7 + 3.5, 0]}
+            castShadow
+            receiveShadow
+          >
             <boxGeometry args={[5.5, 0.3, 5.5]} />
             <meshStandardMaterial
               color="#6b2014"
               metalness={0.6}
-              roughness={0.5}
+              roughness={0.45}
+            />
+          </mesh>
+        ))}
+        {Array.from({ length: Math.floor(towerHeight / 7) - 1 }, (_, i) => (
+          <mesh
+            key={`x${i}`}
+            position={[2.5, PAD_TOP + i * 7 + 7, 0]}
+            rotation={[i % 2 ? Math.atan2(5, 7) : -Math.atan2(5, 7), 0, 0]}
+            castShadow
+          >
+            <boxGeometry args={[0.18, 8.6, 0.18]} />
+            <meshStandardMaterial
+              color="#6b2014"
+              metalness={0.6}
+              roughness={0.45}
             />
           </mesh>
         ))}
@@ -1493,12 +1867,13 @@ function Pad({ height }: { height: number }) {
         [80, -50],
         [-50, -90],
       ].map(([x, z], i) => (
-        <mesh key={i} position={[x, 6, z]}>
-          <cylinderGeometry args={[4, 4, 12, 16]} />
-          <meshStandardMaterial
-            color="#d8d4cc"
-            roughness={0.6}
-            metalness={0.4}
+        <mesh key={i} position={[x, 6, z]} castShadow receiveShadow>
+          <cylinderGeometry args={[4, 4, 12, 32]} />
+          <meshPhysicalMaterial
+            color="#e4e0d8"
+            roughness={0.35}
+            metalness={0.6}
+            clearcoat={0.4}
           />
         </mesh>
       ))}
@@ -1506,54 +1881,66 @@ function Pad({ height }: { height: number }) {
   );
 }
 
-/** Soft billboard clouds a couple of kilometres up, which the rocket climbs through. */
+const CLOUD_BANKS = 36;
+const PUFFS_PER_CLOUD = 16;
+
+/**
+ * Lit cumulus a couple of kilometres up that the rocket climbs through, each
+ * a cluster of puffs shaded by the low sun, so they glow warm on the sunward
+ * side and go grey and flat underneath.
+ */
 function Clouds() {
-  const texture = useMemo(() => {
-    const canvas = document.createElement("canvas");
-    canvas.width = canvas.height = 128;
-    const g = get2DContext(canvas);
-    for (let i = 0; i < 7; i++) {
-      const x = 30 + ((i * 37) % 68);
-      const y = 52 + ((i * 23) % 26);
-      const r = 26 + ((i * 13) % 18);
-      const grad = g.createRadialGradient(x, y, 0, x, y, r);
-      grad.addColorStop(0, "rgba(255,255,255,0.55)");
-      grad.addColorStop(1, "rgba(255,255,255,0)");
-      g.fillStyle = grad;
-      g.fillRect(0, 0, 128, 128);
+  const mesh = useMemo(() => {
+    const count = CLOUD_BANKS * PUFFS_PER_CLOUD;
+    const geometry = billboardGeometry(count);
+    (
+      geometry.getAttribute("aFade") as THREE.InstancedBufferAttribute
+    ).array.fill(0.3);
+    const material = smokeMaterial({ opacity: 0.95, spread: 1.9, erode: 0 });
+    material.fog = false;
+    material.uniforms.uHaze.value.set(HAZE);
+    material.uniforms.uHazeRange.value = 26000;
+    material.uniforms.uSkyColor.value.setRGB(0.5, 0.58, 0.75);
+    material.uniforms.uGroundColor.value.setRGB(0.32, 0.26, 0.24);
+    material.uniforms.uSunColor.value.setRGB(1.3, 0.92, 0.66);
+    const clouds = new THREE.InstancedMesh(geometry, material, count);
+    clouds.frustumCulled = false;
+    const random = seededRandom(3);
+    const matrix = new THREE.Matrix4();
+    const at = new THREE.Vector3();
+    const size = new THREE.Vector3();
+    const none = new THREE.Quaternion();
+    const shade = new THREE.Color();
+    for (let c = 0; c < CLOUD_BANKS; c++) {
+      const angle = random() * Math.PI * 2;
+      const reach = 5000 + random() * 22000;
+      const cx = Math.cos(angle) * reach;
+      const cy = 1800 + random() * 1400;
+      const cz = Math.sin(angle) * reach;
+      const r = 300 + random() * 350;
+      for (let p = 0; p < PUFFS_PER_CLOUD; p++) {
+        const lift = random();
+        at.set(
+          cx + (random() - 0.5) * r * 3.2,
+          cy + lift * r * 0.9,
+          cz + (random() - 0.5) * r * 1.8,
+        );
+        size.setScalar(r * (0.28 + random() * 0.22) * (1 - lift * 0.4));
+        matrix.compose(at, none, size);
+        clouds.setMatrixAt(c * PUFFS_PER_CLOUD + p, matrix);
+        shade.setScalar(0.78 + lift * 0.22);
+        clouds.setColorAt(c * PUFFS_PER_CLOUD + p, shade);
+      }
     }
-    const t = new THREE.CanvasTexture(canvas);
-    t.colorSpace = THREE.SRGBColorSpace;
-    return t;
+    return clouds;
   }, []);
-  useEffect(() => () => texture.dispose(), [texture]);
-  const clouds = useMemo(
-    () =>
-      Array.from({ length: 70 }, (_, i) => ({
-        x: ((i * 1733) % 22000) - 6000,
-        y: 1200 + ((i * 613) % 1800),
-        z: ((i * 977) % 9000) - 6000,
-        s: 400 + ((i * 290) % 600),
-      })),
-    [],
+  useEffect(
+    () => () => {
+      mesh.geometry.dispose();
+      (mesh.material as THREE.Material).dispose();
+      mesh.dispose();
+    },
+    [mesh],
   );
-  return (
-    <group>
-      {clouds.map((c, i) => (
-        <sprite
-          key={i}
-          position={[c.x, c.y, c.z]}
-          scale={[c.s * 1.8, c.s * 0.7, 1]}
-        >
-          <spriteMaterial
-            map={texture}
-            color="#ffe2cc"
-            transparent
-            opacity={0.8}
-            depthWrite={false}
-          />
-        </sprite>
-      ))}
-    </group>
-  );
+  return <primitive object={mesh} />;
 }
