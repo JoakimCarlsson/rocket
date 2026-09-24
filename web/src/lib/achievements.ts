@@ -1,6 +1,5 @@
-import { computeStats } from "./rocket/stats";
-import type { RocketConfig } from "./rocket/types";
-import type { LaunchPlan } from "./sim/simulate";
+import type { RocketConfig, SimulatedStats } from "./rocket/types";
+import type { LaunchPlan } from "./sim/playback";
 
 /** An unlockable joke badge. */
 export interface Achievement {
@@ -54,9 +53,11 @@ export const ACHIEVEMENTS: Achievement[] = [
   { id: "orbit", title: "OFFICIALLY IN SPACE", description: "Reach orbit." },
 ];
 
-/** Returns ids of achievements earned by a configuration. */
-export function configAchievements(config: RocketConfig): string[] {
-  const stats = computeStats(config);
+/** Returns ids of achievements earned by a configuration and its server-derived stats. */
+export function configAchievements(
+  config: RocketConfig,
+  stats: SimulatedStats,
+): string[] {
   const earned: string[] = [];
   if (config.boosters.length >= 10) earned.push("too_many_boosters");
   if (stats.reliability < 35) earned.push("questionable");

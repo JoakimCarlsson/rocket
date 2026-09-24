@@ -4,7 +4,7 @@ import { motion } from "motion/react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AccountHeaderButton } from "@/components/ui/AccountButton";
 import { Wordmark } from "@/components/ui/BrandRail";
 import { Icon } from "@/components/ui/Icon";
@@ -18,7 +18,6 @@ import {
 } from "@/lib/feed/api";
 import { compactNumber } from "@/lib/format";
 import { handOff } from "@/lib/persistence";
-import { computeStats } from "@/lib/rocket/stats";
 import { sharePath } from "@/lib/share";
 import { OutcomeBadge } from "./OutcomeBadge";
 import { RocketThumb } from "./RocketThumb";
@@ -204,7 +203,7 @@ function Card({
   onLike: () => void;
   onRemix: () => void;
 }) {
-  const stats = useMemo(() => computeStats(post.rocket), [post.rocket]);
+  const { stats } = post.launch;
   return (
     <motion.article
       initial={{ opacity: 0, y: 24 }}
@@ -220,7 +219,7 @@ function Card({
           aspect={index % 3 === 0 ? "aspect-[3/4]" : "aspect-[4/5]"}
         />
         <div className="absolute top-3 left-3">
-          <OutcomeBadge plan={post.plan} />
+          <OutcomeBadge launch={post.launch} />
         </div>
       </Link>
       <div className="p-4">

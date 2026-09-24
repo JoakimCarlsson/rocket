@@ -12,6 +12,27 @@ export interface SpawnOptions {
 }
 
 /**
+ * A camera-facing quad for `capacity` instances, with a per-instance life
+ * fraction (`aFade`) and random seed (`aSeed`) for billboard shaders.
+ */
+export function billboardGeometry(capacity: number): THREE.PlaneGeometry {
+  const geometry = new THREE.PlaneGeometry(2, 2);
+  const fade = new THREE.InstancedBufferAttribute(
+    new Float32Array(capacity).fill(1),
+    1,
+  );
+  fade.setUsage(THREE.DynamicDrawUsage);
+  const seed = new THREE.InstancedBufferAttribute(
+    new Float32Array(capacity),
+    1,
+  );
+  for (let i = 0; i < capacity; i++) seed.setX(i, Math.random());
+  geometry.setAttribute("aFade", fade);
+  geometry.setAttribute("aSeed", seed);
+  return geometry;
+}
+
+/**
  * Fixed-capacity instanced particle pool. Particles grow, drift, fade their colour
  * toward an end colour and are recycled; no allocations happen per frame.
  */
@@ -33,13 +54,15 @@ export class ParticleField {
   private readonly scale = new THREE.Vector3();
   private readonly point = new THREE.Vector3();
 
-  /** Creates a pool drawing `capacity` instances of the geometry with the material. */
-  constructor(
-    capacity: number,
-    geometry: THREE.BufferGeometry,
-    material: THREE.Material,
-  ) {
+  private readonly fade: THREE.InstancedBufferAttribute;
+
+  /** Creates a pool drawing `capacity` billboards with a billboard shader material. */
+  constructor(capacity: number, material: THREE.Material) {
     this.capacity = capacity;
+    const geometry = billboardGeometry(capacity);
+    this.fade = geometry.getAttribute(
+      "aFade",
+    ) as THREE.InstancedBufferAttribute;
     this.mesh = new THREE.InstancedMesh(geometry, material, capacity);
     this.mesh.frustumCulled = false;
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -86,6 +109,7 @@ export class ParticleField {
       if (this.age[i] >= this.life[i]) continue;
       this.age[i] += dt;
       const t = Math.min(1, this.age[i] / this.life[i]);
+      this.fade.setX(i, t);
       const o = i * 3;
       this.velocity[o] *= damping;
       this.velocity[o + 1] = this.velocity[o + 1] * damping + buoyancy * dt;
@@ -101,10 +125,7 @@ export class ParticleField {
         this.velocity[o + 2] += (this.velocity[o + 2] / len) * spread;
         this.velocity[o + 1] = Math.abs(this.velocity[o + 1]) * 0.15;
       }
-      const s =
-        t >= 1
-          ? 0
-          : (this.size[i] + this.growth[i] * t) * (t > 0.8 ? (1 - t) / 0.2 : 1);
+      const s = t >= 1 ? 0 : this.size[i] + this.growth[i] * Math.sqrt(t);
       this.point.set(
         this.position[o],
         this.position[o + 1],
@@ -121,7 +142,17 @@ export class ParticleField {
       this.mesh.setColorAt(i, this.color);
     }
     this.mesh.instanceMatrix.needsUpdate = true;
+    this.fade.needsUpdate = true;
     if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
+  }
+
+  /** Retires every live particle at once. */
+  clear(): void {
+    this.age.set(this.life);
+    this.matrix.makeScale(0, 0, 0);
+    for (let i = 0; i < this.capacity; i++)
+      this.mesh.setMatrixAt(i, this.matrix);
+    this.mesh.instanceMatrix.needsUpdate = true;
   }
 
   /** Releases GPU resources. */

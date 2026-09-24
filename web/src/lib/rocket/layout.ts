@@ -6,7 +6,7 @@ import {
   payloadTopRadius,
   topHeight,
 } from "./geometry";
-import { FAIRING_OWNER, PROPELLANTS, UPPER_OWNER } from "./physics";
+import { FAIRING_OWNER, PROPELLANT_LABELS, UPPER_OWNER } from "./parts";
 import type { DecorPart, EngineSpec, RocketConfig, Stage } from "./types";
 
 /** Every primitive the renderer knows how to draw. */
@@ -234,7 +234,7 @@ export function layoutRocket(config: RocketConfig): RocketLayout {
     labels.push({
       key: `${stage.id}:label`,
       title: `STAGE ${index + 1}`,
-      detail: `${stage.height.toFixed(1)}M · ${stage.engine.count}× ${stage.engine.style.toUpperCase()} · ${PROPELLANTS[stage.propellant].label}`,
+      detail: `${stage.height.toFixed(1)}M · ${stage.engine.count}× ${stage.engine.style.toUpperCase()} · ${PROPELLANT_LABELS[stage.propellant]}`,
       position: [rBottom + 0.4, y + stage.height * 0.55, 0],
       side: index % 2 === 0 ? "right" : "left",
     });

@@ -5,7 +5,7 @@ Design ridiculous fictional rockets by talking to an AI engineer, then launch th
 ## Layout
 
 - `web/` — the Next.js app, built as a static export (`web/out`).
-- `cmd/api`, `internal/` — the Go API. It serves `/api/*` and the embedded static export, and holds the OpenRouter key.
+- `cmd/api`, `internal/` — the Go API. It serves `/api/*` and the embedded static export, holds the OpenRouter key, and runs the flight physics so launch results cannot be forged in the browser.
 
 ## Run
 
@@ -41,14 +41,16 @@ The Deploy workflow runs on the self-hosted GitHub Actions runner, reads the rep
 | Rocket config types, defaults, limits, schema validation | `web/src/lib/rocket/{types,defaults,limits,schema}.ts` |
 | Applying actions to a config (pure) | `web/src/lib/rocket/apply.ts` |
 | Procedural generation: config → positioned parts, nozzles, labels | `web/src/lib/rocket/layout.ts` |
-| Shape helpers: stack heights, radii, fin planform, decor anchors | `web/src/lib/rocket/geometry.ts` |
-| Physics model: propellants, nozzles, engine thrust/Isp, masses, drag, centre of pressure, Δv breakdown, failure risks | `web/src/lib/rocket/physics.ts` |
-| Stats (TWR, Δv, stability, reliability) and joke meters | `web/src/lib/rocket/stats.ts` |
+| Shape helpers for rendering: stack heights, radii, fin planform, decor anchors | `web/src/lib/rocket/geometry.ts` |
+| Physics engine: config validation, vehicle model (KSP-style propellants, nozzles, masses, Barrowman centre of pressure, drag), Kerbin-sized planet and atmosphere, analysis (TWR, Δv per burn, static margin, reliability) | `internal/physics/{rocket,geometry,vehicle,planet,analyze}.go` |
+| Flight: RK4 over planar translation and rigid-body pitch around a rotating planet, gimbal and reaction-wheel attitude control, wind, staging, structural limits, seeded hardware failures | `internal/physics/{flight,fly}.go` |
+| Ascent autopilot: MechJeb-style classic ascent (vertical rise, angle-of-attack-limited gravity turn, cut-off at an 80 km apoapsis, coast, circularisation), with the turn shape chosen by rehearsal flights in calm and windy air | `internal/physics/{fly,ascent}.go` |
+| Launch plan (outcome, report, staging summary, repair notes) and random-rocket engine tuning | `internal/physics/{plan,tune}.go`, `internal/httpx/physics_endpoint.go` |
+| Client for the physics API and playback of a flight with smooth time warp | `web/src/lib/physics/*`, `web/src/lib/sim/playback.ts` |
+| Joke meters | `web/src/lib/rocket/stats.ts` |
 | AI action schema and output validation | `web/src/lib/ai/actions.ts` |
 | Provider interface, hosted-model client | `web/src/lib/ai/{provider,remote-provider,client}.ts` |
 | Hosted engineer (OpenRouter via `joakimcarlsson/ai`, structured outputs) and endpoint | `internal/engineer`, `internal/httpx/ai_endpoint.go` |
-| Flight integrator: 2D ascent around a rotating Earth with guidance, throttling, staging, control loss, max-Q breakup and seeded hardware failures | `web/src/lib/sim/flight.ts` |
-| Launch plan: outcome, compressed animation timeline, report, staging summary | `web/src/lib/sim/simulate.ts` |
 | 3D rendering (R3F): parts, animated rocket, bay, launch scene, particles, thumbnails | `web/src/components/three/*` |
 | UI | `web/src/components/ui/*`, `web/src/components/Builder.tsx`, `web/src/components/explore/*`, `web/src/components/share/*` |
 | State (undo/redo, history, launch flow) | `web/src/lib/store.ts` |

@@ -36,8 +36,8 @@ type Config struct {
 // Deps are the subsystems the handlers work through.
 type Deps struct {
 	// Engineer answers player turns. Nil means no hosted model is configured:
-	// the AI endpoint reports it unavailable and the web app uses its local
-	// engineer.
+	// the AI endpoint reports it unavailable and the web app shows the
+	// engineer as offline.
 	Engineer *engineer.Engineer
 	// Accounts holds users and their sessions. Required.
 	Accounts *account.Store
@@ -103,6 +103,7 @@ func (s *Server) routes() {
 		s.registerDev()
 	}
 	s.registerAI()
+	s.registerPhysics()
 	s.registerRockets()
 	s.registerDocs()
 	s.registerSPA()

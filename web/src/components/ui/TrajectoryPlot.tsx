@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { FlightEvent, FlightSample } from "@/lib/sim/flight";
+import type { FlightEvent, FlightSample } from "@/lib/physics/api";
 
 const W = 412;
 const H = 120;

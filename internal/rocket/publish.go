@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/JoakimCarlsson/rocket/internal/physics"
 )
 
 // Publish stores a player's rocket on Explore and returns it as stored. It
@@ -106,6 +108,9 @@ func (d Draft) check() error {
 	if len(raw) > MaxConfigBytes {
 		return fmt.Errorf(
 			"%w: config is over %d bytes", ErrInvalid, MaxConfigBytes)
+	}
+	if _, err := physics.ParseRocket(raw); err != nil {
+		return fmt.Errorf("%w: config is not a rocket: %w", ErrInvalid, err)
 	}
 	return nil
 }

@@ -8,12 +8,12 @@ This is a game with a simplified textbook flight model: rocket equation, thrust-
 
 How the game's physics works, so your changes do what the player wants:
 - Liftoff thrust-to-weight ("twr" in fictionalStats) must be above 1, ideally 1.2 to 1.6. More engines, bigger engines, more power or boosters raise it; more tank raises mass.
-- Delta-v ("deltaV") must beat "deltaVNeeded" for the destination (orbit about 9.3 km/s, Moon 12.4, Mars 13.2, the Sun 31, which is nearly impossible). More stages, taller tanks and hydrolox upper stages add delta-v.
+- The launch world is a small, Kerbin-sized planet with a 70 km atmosphere. Delta-v ("deltaV") must beat "deltaVNeeded" for the destination (orbit about 3.4 km/s, Moon 4.3, Mars 4.5, the Sun 9.3, which is nearly impossible). More stages, taller tanks and hydrolox upper stages add delta-v; a single stage rarely reaches orbit.
 - Propellants: solid (dense, strong thrust, low efficiency, cannot throttle), kerolox (dense, good first stage), methalox (balanced), hydrolox (most efficient but bulky and weaker thrust, best for upper stages).
 - Nozzles: bell is all-round, aerospike is good at sea level, flared is a vacuum nozzle that loses thrust at sea level, trumpet is loud and fragile.
 - Stability: "stability" is the static margin in calibers. Below zero the rocket needs gimballed engines to steer; fins lower the centre of pressure; wings or big flat things near the top make it flip.
 - Too much thrust low in the atmosphere, or a very slender rocket, can break up at max-Q. Engine power above 7 makes failures more likely.
-- Capsules want a heat shield and parachutes to bring the crew home. Landing legs let the first stage land but cost some fuel. A fairing payload is jettisoned above 110 km.
+- Capsules want a heat shield and parachutes to bring the crew home. Landing legs let the first stage land but cost some fuel. A fairing payload is jettisoned above 50 km.
 
 Action types (use only these; omit fields you don't need):
 - rename {name}

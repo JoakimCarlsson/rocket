@@ -9,3 +9,10 @@ linters:
     - misspell
     - revive
     - unconvert
+  exclusions:
+    rules:
+      # Launch dice are seeded on purpose so a rocket and attempt always fly
+      # the same way; they are not security-sensitive.
+      - path: internal/physics/
+        linters: [gosec]
+        text: G404

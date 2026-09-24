@@ -4,8 +4,10 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/JoakimCarlsson/rocket/internal/physics"
 	"github.com/JoakimCarlsson/rocket/internal/rocket"
 	"github.com/joakimcarlsson/minmux/openapi"
 	"github.com/joakimcarlsson/minmux/router"
@@ -45,6 +47,31 @@ type rocketResponse struct {
 	Liked     bool           `json:"liked"      desc:"Whether the caller likes it. Always false when nobody is signed in."`
 	Mine      bool           `json:"mine"       desc:"Whether the caller published it."`
 	CreatedAt time.Time      `json:"created_at" desc:"When it was published."`
+	Launch    *launchSummary `json:"launch"     desc:"How its first launch goes, flown by the server. Null when the stored config no longer parses."`
+}
+
+// launchSummary is the outcome of a rocket's first launch.
+type launchSummary struct {
+	Outcome  physics.Outcome `json:"outcome"  desc:"How the launch ended."`
+	Headline string          `json:"headline" desc:"The mission report headline."`
+	Grade    string          `json:"grade"    desc:"success, partial or failure."`
+	Stats    physics.Stats   `json:"stats"    desc:"The rocket's build-panel numbers."`
+}
+
+// firstLaunch flies a published rocket once, or returns nil when its config
+// no longer parses.
+func firstLaunch(config map[string]any) *launchSummary {
+	r, err := physics.ParseRocketMap(config)
+	if err != nil {
+		return nil
+	}
+	p := physics.Launch(r, 1)
+	return &launchSummary{
+		Outcome:  p.Outcome,
+		Headline: p.Report.Headline,
+		Grade:    p.Report.Grade,
+		Stats:    p.Stats,
+	}
 }
 
 // feedResponse is one page of the Explore feed.
@@ -71,6 +98,7 @@ func toRocketResponse(r rocket.Rocket, viewerID string) rocketResponse {
 		Liked:     r.Liked,
 		Mine:      viewerID != "" && r.UserID == viewerID,
 		CreatedAt: r.CreatedAt,
+		Launch:    firstLaunch(r.Config),
 	}
 }
 
@@ -191,9 +219,12 @@ func (s *Server) handleFeed(c *router.Context, p feedParams) {
 		Rockets: make([]rocketResponse, 0, len(page.Rockets)),
 		Next:    page.Next,
 	}
-	for _, r := range page.Rockets {
-		out.Rockets = append(out.Rockets, toRocketResponse(r, viewer))
+	out.Rockets = out.Rockets[:len(page.Rockets)]
+	var wg sync.WaitGroup
+	for i, r := range page.Rockets {
+		wg.Go(func() { out.Rockets[i] = toRocketResponse(r, viewer) })
 	}
+	wg.Wait()
 	c.JSON(http.StatusOK, out)
 }
 

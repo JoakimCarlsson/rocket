@@ -8,6 +8,12 @@ import { generateName } from "./ai/names";
 import type { HistoryEntry } from "./ai/provider";
 import { ProviderUnavailableError } from "./ai/remote-provider";
 import { loadAchievements, saveAchievements, saveSession } from "./persistence";
+import {
+  analyzeRocket,
+  type DesignProblem,
+  launchRocket,
+  tuneRocket,
+} from "./physics/api";
 import { applyActions } from "./rocket/apply";
 import {
   createRandomRocket,
@@ -16,11 +22,7 @@ import {
 } from "./rocket/defaults";
 import { createRng, newSeed } from "./rocket/random";
 import type { RocketConfig } from "./rocket/types";
-import {
-  type LaunchPlan,
-  simulateLaunch,
-  summarizeMission,
-} from "./sim/simulate";
+import { type LaunchPlan, toLaunchPlan } from "./sim/playback";
 import { sound } from "./sound";
 
 /** Which screen the builder is showing. */
@@ -48,6 +50,7 @@ export interface BuilderState {
   mode: Mode;
   attempt: number;
   plan: LaunchPlan | null;
+  flightReady: boolean;
   lastPrompt: string;
   providerLabel: string;
   unlocked: string[];
@@ -59,13 +62,13 @@ export interface BuilderState {
   undo: () => void;
   redo: () => void;
   reset: () => void;
-  randomize: () => void;
+  randomize: () => Promise<void>;
   loadRocket: (rocket: RocketConfig, note: string, prompt?: string) => void;
   hydrate: (
     rocket: RocketConfig,
     messages: { role: "user" | "ai"; text: string }[],
   ) => void;
-  launch: () => void;
+  launch: () => Promise<void>;
   beginFlight: () => void;
   finishLaunch: () => void;
   backToBuild: () => void;
@@ -110,9 +113,15 @@ export const useBuilder = create<BuilderState>((set, get) => {
       changeTick: state.changeTick + 1,
       ...extra,
     });
-    unlock(configAchievements(rocket));
+    analyzeRocket(rocket)
+      .then((analysis) => unlock(configAchievements(rocket, analysis.stats)))
+      .catch(() => {});
     persist();
   };
+
+  /** The rocket's current design problems, or none when the server is unreachable. */
+  const problemsOf = async (rocket: RocketConfig): Promise<DesignProblem[]> =>
+    (await analyzeRocket(rocket).catch(() => null))?.problems ?? [];
 
   /** Unlocks achievements and queues toasts for new ones. */
   const unlock = (ids: string[]) => {
@@ -145,9 +154,15 @@ export const useBuilder = create<BuilderState>((set, get) => {
       (result.actions.length
         ? "Done."
         : "I couldn't turn that into a change. Try another description.");
+    const skipped = result.rejected
+      ? [
+          `(${result.rejected} requested change${result.rejected > 1 ? "s were" : " was"} invalid and not applied.)`,
+        ]
+      : [];
     const reply = [
       response,
       ...notes.filter((n) => !response.includes(n)),
+      ...skipped,
     ].join(" ");
     const messages = [...state.messages, message("ai", reply)];
     if (result.actions.length || config.name !== state.rocket.name) {
@@ -164,6 +179,32 @@ export const useBuilder = create<BuilderState>((set, get) => {
     }
   };
 
+  /**
+   * Gives the engineer one follow-up turn when its change left the rocket with new
+   * physical problems, such as too little thrust or delta-v for the destination.
+   */
+  const selfCheck = async (before: DesignProblem[], prompt: string) => {
+    const problems = (await problemsOf(get().rocket)).filter(
+      (p) => !before.some((b) => b.key === p.key),
+    );
+    if (!problems.length) return;
+    const state = get();
+    set({ busy: true });
+    try {
+      const result = await getAIProvider().interpret({
+        instruction: `Self-check after the player's request "${prompt}": the rocket now has these problems: ${problems.map((p) => p.text).join("; ")}. Fix them while keeping what the player asked for. If the player clearly asked for exactly this, return no actions and say so.`,
+        rocket: state.rocket,
+        history: historyFrom(state.messages),
+        mode: "repair",
+      });
+      if (result.actions.length) applyResult(result, "Engineer self-check");
+      else set({ busy: false });
+    } catch {
+      set({ busy: false });
+    }
+  };
+
+  /** Ends a failed engineer turn with a message saying why. */
   const fail = (error: unknown) => {
     const offline = error instanceof ProviderUnavailableError;
     set({
@@ -190,6 +231,7 @@ export const useBuilder = create<BuilderState>((set, get) => {
     mode: "build",
     attempt: 0,
     plan: null,
+    flightReady: false,
     lastPrompt: "",
     providerLabel: OFFLINE_LABEL,
     unlocked: [],
@@ -206,13 +248,17 @@ export const useBuilder = create<BuilderState>((set, get) => {
       });
       sound.play("click");
       try {
-        const result = await getAIProvider().interpret({
-          instruction: prompt,
-          rocket: state.rocket,
-          history: historyFrom(state.messages),
-          mode: "modify",
-        });
+        const [result, before] = await Promise.all([
+          getAIProvider().interpret({
+            instruction: prompt,
+            rocket: state.rocket,
+            history: historyFrom(state.messages),
+            mode: "modify",
+          }),
+          problemsOf(state.rocket),
+        ]);
         applyResult(result, prompt);
+        await selfCheck(before, prompt);
       } catch (error) {
         fail(error);
       }
@@ -221,7 +267,7 @@ export const useBuilder = create<BuilderState>((set, get) => {
     async repair() {
       const state = get();
       if (state.busy || !state.plan) return;
-      const mission = summarizeMission(state.rocket, state.plan);
+      const { mission } = state.plan;
       const prompt = "Ask AI to fix it.";
       set({
         busy: true,
@@ -237,6 +283,7 @@ export const useBuilder = create<BuilderState>((set, get) => {
           mission,
         });
         applyResult(result, prompt);
+        await selfCheck([], mission.headline);
       } catch (error) {
         fail(error);
       }
@@ -284,10 +331,11 @@ export const useBuilder = create<BuilderState>((set, get) => {
       sound.play("whoosh");
     },
 
-    randomize() {
+    async randomize() {
       const seed = newSeed();
-      const rocket = createRandomRocket(seed);
-      rocket.name = generateName(rocket, createRng(seed));
+      const random = createRandomRocket(seed);
+      random.name = generateName(random, createRng(seed));
+      const rocket = await tuneRocket(random).catch(() => random);
       commit(rocket, "randomize", {
         messages: [
           ...get().messages,
@@ -315,21 +363,37 @@ export const useBuilder = create<BuilderState>((set, get) => {
       });
     },
 
-    launch() {
+    async launch() {
       const state = get();
       if (state.busy || (state.mode !== "build" && state.mode !== "report"))
         return;
       const attempt = state.attempt + 1;
-      set({
-        mode: "transition",
-        attempt,
-        plan: simulateLaunch(state.rocket, attempt),
-      });
+      set({ mode: "transition", attempt, plan: null, flightReady: false });
       sound.play("whoosh");
+      try {
+        const plan = toLaunchPlan(await launchRocket(state.rocket, attempt));
+        if (get().mode !== "transition") return;
+        set({ plan });
+        if (get().flightReady) set({ mode: "launch" });
+      } catch {
+        set({
+          mode: "build",
+          messages: [
+            ...get().messages,
+            message(
+              "ai",
+              "Launch control lost contact with the pad. Try again.",
+            ),
+          ],
+        });
+      }
     },
 
     beginFlight() {
-      if (get().mode === "transition") set({ mode: "launch" });
+      const { mode, plan } = get();
+      if (mode !== "transition") return;
+      if (plan) set({ mode: "launch" });
+      else set({ flightReady: true });
     },
 
     finishLaunch() {

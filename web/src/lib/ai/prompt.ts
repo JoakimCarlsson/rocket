@@ -1,10 +1,12 @@
-import { computeStats, stagingBreakdown } from "../rocket/stats";
+import type { Analysis } from "../physics/api";
 import type { RocketConfig } from "../rocket/types";
 import type { InterpretRequest } from "./provider";
 
-/** Summarises the rocket compactly so the model sees ids and key numbers. */
-export function describeRocket(rocket: RocketConfig): string {
-  const stats = computeStats(rocket);
+/** Summarises the rocket and its server analysis compactly so the model sees ids and key numbers. */
+export function describeRocket(
+  rocket: RocketConfig,
+  analysis: Analysis,
+): string {
   return JSON.stringify({
     name: rocket.name,
     destination: rocket.destination,
@@ -36,8 +38,8 @@ export function describeRocket(rocket: RocketConfig): string {
     legs: rocket.legs,
     decorativeParts: rocket.decorativeParts,
     appearance: rocket.appearance,
-    fictionalStats: stats,
-    staging: stagingBreakdown(rocket).map((p) => ({
+    fictionalStats: analysis.stats,
+    staging: analysis.staging.map((p) => ({
       burn: p.label,
       deltaV: Math.round(p.deltaV),
       twr: +p.twr.toFixed(2),
@@ -45,15 +47,18 @@ export function describeRocket(rocket: RocketConfig): string {
   });
 }
 
-/** Builds the user turn for a hosted model from an interpret request. */
-export function buildUserMessage(request: InterpretRequest): string {
+/** Builds the user turn for a hosted model from an interpret request and the rocket's analysis. */
+export function buildUserMessage(
+  request: InterpretRequest,
+  analysis: Analysis,
+): string {
   const history = request.history
     .slice(-6)
     .map((h, i) => `${i + 1}. player: ${h.prompt}\n   engineer: ${h.response}`)
     .join("\n");
   const parts = [
     `MODE: ${request.mode}`,
-    `CURRENT ROCKET: ${describeRocket(request.rocket)}`,
+    `CURRENT ROCKET: ${describeRocket(request.rocket, analysis)}`,
     history ? `RECENT CHANGES:\n${history}` : "",
     request.mission
       ? `FICTIONAL MISSION RESULT: ${JSON.stringify(request.mission)}`

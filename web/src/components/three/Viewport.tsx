@@ -2,12 +2,14 @@
 
 import { Canvas } from "@react-three/fiber";
 import { Suspense, useCallback, useMemo, useRef } from "react";
+import * as THREE from "three";
 import { layoutRocket, type PlacedPart } from "@/lib/rocket/layout";
 import type { RocketConfig } from "@/lib/rocket/types";
-import type { LaunchPlan } from "@/lib/sim/simulate";
+import type { LaunchPlan } from "@/lib/sim/playback";
 import { sound } from "@/lib/sound";
 import { Bay, BayCamera } from "./Bay";
 import { type LaunchCue, LaunchScene, type Telemetry } from "./LaunchScene";
+import { PostEffects } from "./PostEffects";
 
 /** Props for the main 3D viewport. */
 export interface ViewportProps {
@@ -47,7 +49,12 @@ export function Viewport({
     <Canvas
       className="!fixed inset-0 touch-none"
       dpr={quality === "high" ? [1, 2] : [1, 1.25]}
-      gl={{ antialias: true, powerPreference: "high-performance" }}
+      shadows={{ type: THREE.PCFShadowMap }}
+      gl={{
+        antialias: false,
+        stencil: false,
+        powerPreference: "high-performance",
+      }}
       camera={{ fov: 35, near: 0.5, far: 6000, position: [70, 40, 110] }}
     >
       <Suspense fallback={null}>
@@ -74,6 +81,7 @@ export function Viewport({
             onComplete={onLaunchComplete}
           />
         )}
+        <PostEffects quality={quality} />
       </Suspense>
     </Canvas>
   );

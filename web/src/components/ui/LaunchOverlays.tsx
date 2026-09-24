@@ -5,11 +5,8 @@ import { useEffect, useRef, useState } from "react";
 import type { LaunchCue, Telemetry } from "@/components/three/LaunchScene";
 import { achievementById } from "@/lib/achievements";
 import { NO_RESTORE } from "@/lib/dom";
-import {
-  flightTime,
-  type LaunchPlan,
-  type StagingRow,
-} from "@/lib/sim/simulate";
+import type { StagingRow } from "@/lib/physics/api";
+import { flightTime, type LaunchPlan } from "@/lib/sim/playback";
 import { Icon } from "./Icon";
 import { TrajectoryPlot } from "./TrajectoryPlot";
 
@@ -90,6 +87,9 @@ const ARRIVALS: Partial<Record<LaunchPlan["outcome"], string>> = {
   payload_early: "PAYLOAD IS ON ITS OWN",
 };
 
+/** How long an event banner stays up before it fades. */
+const BANNER_MS = 3500;
+
 /** Formats a physical altitude for the HUD. */
 function formatHudAltitude(metres: number): string {
   return metres < 10_000
@@ -125,7 +125,13 @@ export function LaunchHUD({
   }, [telemetry]);
 
   const count = cue?.value.startsWith("count:") ? cue.value.slice(6) : null;
-  const banner = cue ? CUE_BANNERS[cue.value] : undefined;
+  const [expired, setExpired] = useState<number | null>(null);
+  useEffect(() => {
+    if (!cue || cue.value === "arrive") return;
+    const timer = setTimeout(() => setExpired(cue.id), BANNER_MS);
+    return () => clearTimeout(timer);
+  }, [cue]);
+  const banner = cue && cue.id !== expired ? CUE_BANNERS[cue.value] : undefined;
   const arrived =
     cue?.value === "arrive"
       ? (ARRIVALS[plan.outcome] ?? "ORBIT ACHIEVED")
