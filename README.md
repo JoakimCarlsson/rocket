@@ -42,11 +42,11 @@ The Deploy workflow runs on the self-hosted GitHub Actions runner, reads the rep
 | Applying actions to a config (pure) | `web/src/lib/rocket/apply.ts` |
 | Procedural generation: config → positioned parts, nozzles, labels | `web/src/lib/rocket/layout.ts` |
 | Shape helpers for rendering: stack heights, radii, fin planform, decor anchors | `web/src/lib/rocket/geometry.ts` |
-| Physics engine: config validation, vehicle model (propellants, nozzles, masses, Barrowman centre of pressure, drag), US 1976 atmosphere, analysis (TWR, Δv per burn, static margin, reliability) | `internal/physics/{rocket,geometry,vehicle,atmosphere,analyze}.go` |
-| Flight: RK4 over planar translation and rigid-body pitch around a rotating Earth, thrust-vector control with rate feed-forward, wind, load relief, staging, structural limits, seeded hardware failures | `internal/physics/flight.go` |
-| Ascent guidance: vertical rise, pitch-over kick chosen by calm rehearsal flights, zero-alpha gravity turn, then UPFG (Shuttle closed-loop guidance, ported from PEGAS) to a 200 km orbit | `internal/physics/{kick,guidance}.go` |
+| Physics engine: config validation, vehicle model (KSP-style propellants, nozzles, masses, Barrowman centre of pressure, drag), Kerbin-sized planet and atmosphere, analysis (TWR, Δv per burn, static margin, reliability) | `internal/physics/{rocket,geometry,vehicle,planet,analyze}.go` |
+| Flight: RK4 over planar translation and rigid-body pitch around a rotating planet, gimbal and reaction-wheel attitude control, wind, staging, structural limits, seeded hardware failures | `internal/physics/{flight,fly}.go` |
+| Ascent autopilot: MechJeb-style classic ascent (vertical rise, angle-of-attack-limited gravity turn, cut-off at an 80 km apoapsis, coast, circularisation), with the turn shape chosen by rehearsal flights in calm and windy air | `internal/physics/{fly,ascent}.go` |
 | Launch plan (outcome, report, staging summary, repair notes) and random-rocket engine tuning | `internal/physics/{plan,tune}.go`, `internal/httpx/physics_endpoint.go` |
-| Client for the physics API and playback of a flight on a compressed clock | `web/src/lib/physics/*`, `web/src/lib/sim/playback.ts` |
+| Client for the physics API and playback of a flight with smooth time warp | `web/src/lib/physics/*`, `web/src/lib/sim/playback.ts` |
 | Joke meters | `web/src/lib/rocket/stats.ts` |
 | AI action schema and output validation | `web/src/lib/ai/actions.ts` |
 | Provider interface, hosted-model client | `web/src/lib/ai/{provider,remote-provider,client}.ts` |

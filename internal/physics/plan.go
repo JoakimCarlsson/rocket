@@ -85,7 +85,7 @@ func Launch(r *Rocket, attempt int) Plan {
 	rng := rand.New(rand.NewPCG(seed, seed^0x9e3779b97f4a7c15))
 	v := buildVehicle(r)
 	stats := computeStats(r, v)
-	f := fly(r, v, rng, stats.Chaos, flightPlan{kick: bestKick(r, v)})
+	f := fly(r, v, rng, stats.Chaos, flightPlan{profile: bestProfile(r, v)})
 	outcome := outcomeOf(r, f, stats)
 	report := buildReport(r, stats, outcome, f, rng)
 	return Plan{
@@ -216,7 +216,7 @@ func whereabouts(o Outcome, f flight) string {
 		return "Trans-lunar injection"
 	case f.excessSpeed > 0:
 		return fmt.Sprintf("Escape, v∞ %.1f km/s", f.excessSpeed/1000)
-	case f.bound && f.perigee > 100_000:
+	case f.bound && f.perigee > atmosphereTop:
 		return formatKm(f.perigee/1000) + " × " + formatKm(f.apogee/1000)
 	}
 	return "Peak " + formatKm(f.maxAltitude/1000)

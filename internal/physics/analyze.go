@@ -141,7 +141,7 @@ func burns(v *vehicle) []Burn {
 					burning = append(burning, g)
 				}
 			}
-			if len(burning) == 0 {
+			if len(burning) == 0 || fuel[stage.key] <= 0 && i+1 < len(v.stages) {
 				break
 			}
 			pressure := 0.0

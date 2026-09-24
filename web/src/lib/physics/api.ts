@@ -60,6 +60,8 @@ export interface FlightSample {
   mach: number;
   throttle: number;
   g: number;
+  climb: number;
+  ground: number;
 }
 
 /** Every way a launch can end. */

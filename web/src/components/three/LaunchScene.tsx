@@ -13,7 +13,7 @@ import {
 } from "@/lib/rocket/layout";
 import type { RocketConfig } from "@/lib/rocket/types";
 import {
-  flightTime,
+  type FlightPoint,
   type LaunchEvent,
   type LaunchPlan,
   telemetryAt,
@@ -24,9 +24,16 @@ import { ParticleField } from "./particles";
 /** Seconds of countdown before ignition. */
 export const COUNTDOWN_SECONDS = 3.6;
 const PAD_TOP = 3;
-const GRAVITY = 14;
-const TRUE_SCALE_SECONDS = 15;
-const SCALE_FALLOFF = 0.8;
+const GRAVITY = 9.81;
+const PLANET_RADIUS = 600_000;
+const PLANET_CENTER = new THREE.Vector3(0, -PLANET_RADIUS, 0);
+const NORTH = new THREE.Vector3(0, 0, 1);
+const LOCAL_GROUND_CEILING = 8_000;
+const SMOKE_CEILING = 30_000;
+const AIR_SCALE_HEIGHT = 5_600;
+const CAMERA_CLEARANCE = 2;
+const PITCH_LIMIT = 1.4;
+const MAX_CAMERA_DISTANCE = 60_000;
 
 /** Cue names the launch scene reports to the UI. */
 export type LaunchCue =
@@ -92,16 +99,47 @@ function buildSegments(layout: RocketLayout): SegmentData[] {
   });
 }
 
+/** The unit vector pointing up from the planet's centre through a point. */
+function localUp(
+  point: THREE.Vector3,
+  out = new THREE.Vector3(),
+): THREE.Vector3 {
+  return out.copy(point).sub(PLANET_CENTER).normalize();
+}
+
+/** Height of a point above the planet's surface, in metres. */
+function altitudeOf(point: THREE.Vector3): number {
+  return point.distanceTo(PLANET_CENTER) - PLANET_RADIUS;
+}
+
+/** Share of sea-level air density left at an altitude. */
+function airAt(altitude: number): number {
+  return Math.exp(-Math.max(0, altitude) / AIR_SCALE_HEIGHT);
+}
+
 /**
- * Scene units per real metre at a moment of flight: true scale around the pad,
- * shrinking later so a whole ascent fits in view. The rocket moves by its real
- * displacement times this factor each frame, so its direction of travel is
- * never distorted.
+ * Places the vehicle on the curved, true-scale planet: writes the position of
+ * its origin and its on-screen velocity (flight velocity times the time
+ * warp), and returns its world pitch angle. `base` is the height of the
+ * vehicle's origin above the ground on the pad.
  */
-function sceneScale(flightSeconds: number): number {
-  return flightSeconds < TRUE_SCALE_SECONDS
-    ? 1
-    : (TRUE_SCALE_SECONDS / flightSeconds) ** SCALE_FALLOFF;
+function placeOnPlanet(
+  point: FlightPoint,
+  base: number,
+  position: THREE.Vector3,
+  velocity: THREE.Vector3,
+): number {
+  const theta = point.downrange / PLANET_RADIUS;
+  const radius = PLANET_RADIUS + base + point.altitude;
+  const up = new THREE.Vector3(Math.sin(theta), Math.cos(theta), 0);
+  const east = new THREE.Vector3(Math.cos(theta), -Math.sin(theta), 0);
+  position.copy(PLANET_CENTER).addScaledVector(up, radius);
+  velocity
+    .copy(up)
+    .multiplyScalar(point.climb)
+    .addScaledVector(east, (point.ground * radius) / PLANET_RADIUS)
+    .multiplyScalar(point.warp);
+  return THREE.MathUtils.degToRad(point.pitch) + theta;
 }
 
 /** Surface colours for the body shown on arrival. */
@@ -111,13 +149,18 @@ const CELESTIAL = {
   sun: { color: "#ffd27a", emissive: "#ff9a2a" },
 } as const;
 
-/** Deterministic noise used for flicker and shake. */
+/** Deterministic noise used for flame flicker. */
 function wiggle(t: number, seed: number): number {
   return (
     Math.sin(t * 37.1 + seed) * 0.5 +
     Math.sin(t * 91.7 + seed * 2.3) * 0.3 +
     Math.sin(t * 13.3 + seed * 0.7) * 0.2
   );
+}
+
+/** Low-frequency noise for camera shake, slow enough never to strobe. */
+function rumble(t: number, seed: number): number {
+  return Math.sin(t * 11.3 + seed) * 0.6 + Math.sin(t * 6.7 + seed * 1.9) * 0.4;
 }
 
 /** The launch pad sequence: countdown, ignition, flight, separations and whatever the dice decided. */
@@ -130,7 +173,7 @@ export function LaunchScene({
   onCue,
   onComplete,
 }: LaunchSceneProps) {
-  const { camera, scene } = useThree();
+  const { camera, scene, gl } = useThree();
   const segments = useMemo(() => buildSegments(layout), [layout]);
   const vehicle = useRef<THREE.Group>(null);
   const segmentRefs = useRef<Record<string, THREE.Group | null>>({});
@@ -142,6 +185,7 @@ export function LaunchScene({
   const sky = useRef<THREE.ShaderMaterial>(null);
   const stars = useRef<THREE.PointsMaterial>(null);
   const celestial = useRef<THREE.Group>(null);
+  const localGround = useRef<THREE.Group>(null);
   const low = quality === "low";
 
   const fields = useMemo(() => {
@@ -192,10 +236,12 @@ export function LaunchScene({
     clock: 0,
     pos: new THREE.Vector3(0, PAD_TOP - layout.minY, 0),
     vel: new THREE.Vector3(),
+    base: PAD_TOP - layout.minY,
     angle: tilt,
     angVel: 0,
     roll: 0,
     rollVel: 0,
+    warp: 1,
     thrusting: false,
     throttle: 0,
     pauseUntil: 0,
@@ -206,10 +252,6 @@ export function LaunchScene({
     eventIndex: 0,
     attached: new Set(layout.segments),
     placed: false,
-    lastDownrange: 0,
-    lastAltitude: 0,
-    chaseOffset: new THREE.Vector3(),
-    groundCamera: new THREE.Vector3(),
     lookAt: new THREE.Vector3(0, layout.height / 2, 0),
     countdownCue: 0,
     finished: false,
@@ -217,19 +259,86 @@ export function LaunchScene({
     debrisId: 0,
   });
 
+  const view = useRef({
+    yaw: 0.5,
+    pitch: -0.15,
+    distance: 100,
+    target: 100,
+    fov: 38,
+    dragging: false,
+    lastX: 0,
+    lastY: 0,
+  });
+
   useEffect(() => {
-    const distance = Math.max(70, layout.height * 1.6);
-    sim.current.groundCamera.set(distance * 0.55, 6, distance);
-    camera.position.copy(sim.current.groundCamera);
-    camera.lookAt(0, layout.height * 0.45, 0);
-    (camera as THREE.PerspectiveCamera).far = 20000;
-    camera.updateProjectionMatrix();
+    const v = view.current;
+    const distance = Math.max(70, layout.height * 1.6) * 1.16;
+    const focusHeight = PAD_TOP + layout.height * 0.45;
+    v.distance = v.target = distance;
+    v.pitch = Math.asin(
+      THREE.MathUtils.clamp((8 - focusHeight) / distance, -0.9, 0.9),
+    );
+    const cam = camera as THREE.PerspectiveCamera;
+    cam.far = 4_000_000;
+    cam.updateProjectionMatrix();
     const fog = new THREE.Fog("#e7a57a", 300, 2400);
     scene.fog = fog;
     return () => {
       if (scene.fog === fog) scene.fog = null;
+      cam.up.set(0, 1, 0);
+      cam.near = 0.5;
+      cam.far = 6000;
+      cam.updateProjectionMatrix();
     };
   }, [camera, scene, layout.height]);
+
+  useEffect(() => {
+    const el = gl.domElement;
+    const v = view.current;
+    const nearest = layout.height * 0.6 + 10;
+    const down = (e: PointerEvent) => {
+      v.dragging = true;
+      v.lastX = e.clientX;
+      v.lastY = e.clientY;
+      el.setPointerCapture(e.pointerId);
+    };
+    const move = (e: PointerEvent) => {
+      if (!v.dragging) return;
+      v.yaw -= (e.clientX - v.lastX) * 0.005;
+      v.pitch = THREE.MathUtils.clamp(
+        v.pitch + (e.clientY - v.lastY) * 0.005,
+        -PITCH_LIMIT,
+        PITCH_LIMIT,
+      );
+      v.lastX = e.clientX;
+      v.lastY = e.clientY;
+    };
+    const up = (e: PointerEvent) => {
+      v.dragging = false;
+      if (el.hasPointerCapture(e.pointerId))
+        el.releasePointerCapture(e.pointerId);
+    };
+    const wheel = (e: WheelEvent) => {
+      e.preventDefault();
+      v.target = THREE.MathUtils.clamp(
+        v.target * Math.exp(e.deltaY * 0.0012),
+        nearest,
+        MAX_CAMERA_DISTANCE,
+      );
+    };
+    el.addEventListener("pointerdown", down);
+    el.addEventListener("pointermove", move);
+    el.addEventListener("pointerup", up);
+    el.addEventListener("pointercancel", up);
+    el.addEventListener("wheel", wheel, { passive: false });
+    return () => {
+      el.removeEventListener("pointerdown", down);
+      el.removeEventListener("pointermove", move);
+      el.removeEventListener("pointerup", up);
+      el.removeEventListener("pointercancel", up);
+      el.removeEventListener("wheel", wheel);
+    };
+  }, [gl, layout.height]);
 
   /** Returns the vehicle's thrust direction. */
   const direction = (angle: number) =>
@@ -314,6 +423,10 @@ export function LaunchScene({
     s.alive = false;
     s.thrusting = false;
     s.shake = 5;
+    view.current.target = Math.min(
+      MAX_CAMERA_DISTANCE,
+      view.current.target * 1.5,
+    );
     firing.current = new Set();
     if (flash.current) {
       flash.current.position.copy(center);
@@ -379,7 +492,7 @@ export function LaunchScene({
               .multiplyScalar(7);
             detach(
               key,
-              s.vel.clone().multiplyScalar(0.85).add(out),
+              s.vel.clone().add(out),
               new THREE.Vector3(out.z * 0.05, 0, -out.x * 0.08),
             );
           });
@@ -387,7 +500,7 @@ export function LaunchScene({
       case "stage_sep":
         detach(
           `stage:${event.stageId}`,
-          s.vel.clone().multiplyScalar(0.8).sub(dir.clone().multiplyScalar(4)),
+          s.vel.clone().sub(dir.clone().multiplyScalar(6)),
           new THREE.Vector3(0.2, 0, 0.35),
         );
         s.pauseUntil = s.clock + 0.7;
@@ -464,8 +577,12 @@ export function LaunchScene({
     }
   };
 
-  /** Spawns flame and smoke particles from burning nozzles. */
-  const emitExhaust = (dt: number, dir: THREE.Vector3) => {
+  /**
+   * Spawns flame and smoke particles from burning nozzles. Flame rides along
+   * with the vehicle; smoke is left behind in the air as a trail, spread over
+   * the distance the vehicle covered this frame so fast flight leaves no gaps.
+   */
+  const emitExhaust = (dt: number, dir: THREE.Vector3, altitude: number) => {
     const s = sim.current;
     if (s.throttle < 0.05 || !vehicle.current) return;
     const nozzles = segments
@@ -479,11 +596,16 @@ export function LaunchScene({
     const fireTo = new THREE.Color(0.25, 0.04, 0);
     const smokeFrom = new THREE.Color("#d8d2c8");
     const smokeTo = new THREE.Color("#6f6a64");
+    const air = altitude < SMOKE_CEILING ? airAt(altitude) : 0;
     const fireBudget = Math.ceil(
       (low ? 14 : 34) * s.throttle * Math.min(2, dt * 60),
     );
     const smokeBudget = Math.ceil(
-      (low ? 4 : 9) * s.throttle * Math.min(2, dt * 60) * (s.lifted ? 1 : 1.6),
+      (low ? 4 : 9) *
+        s.throttle *
+        Math.min(2, dt * 60) *
+        (s.lifted ? 1 : 1.6) *
+        Math.sqrt(air),
     );
     const world = new THREE.Vector3();
     const jitter = new THREE.Vector3();
@@ -496,7 +618,7 @@ export function LaunchScene({
         velocity: back
           .clone()
           .multiplyScalar((24 + Math.random() * 20) * (0.6 + n.power / 10))
-          .add(s.vel.clone().multiplyScalar(0.6))
+          .add(s.vel)
           .add(jitter.multiplyScalar(6)),
         life: 0.22 + Math.random() * 0.25,
         size: n.radius * 0.9,
@@ -510,60 +632,56 @@ export function LaunchScene({
       world
         .set(...n.position)
         .applyMatrix4(matrix)
-        .addScaledVector(back, n.radius * 4);
+        .addScaledVector(back, n.radius * 4)
+        .addScaledVector(s.vel, -dt * Math.random());
       jitter.randomDirection().multiplyScalar(5);
-      const nearGround = world.y < PAD_TOP + 30;
+      const nearGround = altitude < 30;
       fields.smoke.spawn({
         position: world.clone(),
         velocity: back
           .clone()
           .multiplyScalar(14 + Math.random() * 10)
           .add(jitter)
-          .add(s.vel.clone().multiplyScalar(0.25)),
-        life: nearGround ? 5 + Math.random() * 4 : 2.5 + Math.random() * 2,
+          .addScaledVector(s.vel, 0.04),
+        life: nearGround ? 5 + Math.random() * 4 : 3 + Math.random() * 3,
         size: n.radius * 1.4,
-        growth: n.radius * (nearGround ? 9 : 5) * scale,
+        growth: n.radius * (nearGround ? 9 : 6) * scale,
         from: smokeFrom,
         to: smokeTo,
       });
     }
   };
 
-  /** Ground camera at first, then a chase camera; always shaking a bit when things are loud. */
-  const moveCamera = (
-    cam: THREE.PerspectiveCamera,
-    dt: number,
-    dir: THREE.Vector3,
-    altitude: number,
-  ) => {
+  /**
+   * A Kerbal Space Program camera: locked onto the vehicle with no lag, at a
+   * yaw, pitch and distance the player can drag and scroll, measured in the
+   * vehicle's local frame so the horizon stays level as it arcs over the
+   * planet.
+   */
+  const moveCamera = (cam: THREE.PerspectiveCamera, dt: number) => {
     const s = sim.current;
-    const following = s.alive || s.attached.size > 0;
-    const focus = following
-      ? s.pos.clone().addScaledVector(dir, layout.height * 0.45)
-      : s.lookAt;
-    const chase = altitude > 45 * scale || Math.abs(s.pos.x) > 80 * scale;
-    if (chase && following) s.lookAt.copy(focus);
-    else s.lookAt.lerp(focus, Math.min(1, dt * 4));
-    if (!chase) {
-      cam.position.lerp(s.groundCamera, Math.min(1, dt * 3));
-      s.chaseOffset.copy(cam.position).sub(s.pos);
-    } else {
-      const back = 70 * scale + Math.min(260, altitude * 0.12);
-      s.chaseOffset.lerp(
-        new THREE.Vector3(back * 0.55, -back * 0.18, back),
-        Math.min(1, dt * 1.6),
-      );
-      cam.position.copy(s.pos).add(s.chaseOffset);
-    }
-    const amp = s.shake * 0.35 * scale;
-    cam.position.x += wiggle(s.clock, 11) * amp;
-    cam.position.y += wiggle(s.clock, 17) * amp;
-    const look = s.lookAt.clone();
-    if (s.arrived && celestial.current && plan.outcome !== "orbit")
-      look.lerp(celestial.current.position, 0.25);
-    cam.lookAt(look);
-    const targetFov = chase ? 42 : 38;
-    cam.fov = THREE.MathUtils.damp(cam.fov, targetFov, 2, dt);
+    const v = view.current;
+    v.distance = THREE.MathUtils.damp(v.distance, v.target, 5, dt);
+    const up = localUp(s.lookAt);
+    const east = new THREE.Vector3(up.y, -up.x, 0);
+    const offset = east
+      .clone()
+      .multiplyScalar(Math.sin(v.yaw))
+      .addScaledVector(NORTH, Math.cos(v.yaw))
+      .multiplyScalar(Math.cos(v.pitch))
+      .addScaledVector(up, Math.sin(v.pitch))
+      .multiplyScalar(v.distance);
+    cam.position.copy(s.lookAt).add(offset);
+    const below = CAMERA_CLEARANCE - altitudeOf(cam.position);
+    if (below > 0) cam.position.addScaledVector(localUp(cam.position), below);
+    const amp = s.shake * 0.004 * v.distance;
+    cam.position
+      .addScaledVector(up, rumble(s.clock, 17) * amp)
+      .addScaledVector(east, rumble(s.clock, 11) * amp);
+    cam.up.copy(up);
+    cam.lookAt(s.lookAt);
+    cam.near = THREE.MathUtils.clamp(v.distance * 0.01, 0.3, 200);
+    cam.fov = THREE.MathUtils.damp(cam.fov, v.fov, 2, dt);
     cam.updateProjectionMatrix();
   };
 
@@ -582,6 +700,8 @@ export function LaunchScene({
       v.updateMatrixWorld(true);
       const box = new THREE.Box3().setFromObject(v);
       s.pos.y += PAD_TOP - box.min.y;
+      s.base = s.pos.y;
+      s.lookAt.set(0, s.base + layout.height * 0.45, 0);
       s.placed = true;
     }
 
@@ -621,23 +741,11 @@ export function LaunchScene({
     );
     flags.current.engineGlow = s.throttle;
 
+    const point = telemetryAt(plan, t);
+    s.warp = point.warp;
     let dir = direction(s.angle);
     if (s.lifted && s.alive) {
-      const path = telemetryAt(plan, t);
-      const scale = sceneScale(flightTime(plan, t));
-      const step = new THREE.Vector3(
-        (path.downrange - s.lastDownrange) * scale,
-        (path.altitude - s.lastAltitude) * scale,
-        0,
-      );
-      s.lastDownrange = path.downrange;
-      s.lastAltitude = path.altitude;
-      s.vel.lerp(
-        step.clone().divideScalar(Math.max(dt, 1e-3)),
-        Math.min(1, dt * 8),
-      );
-      s.pos.add(step);
-      s.angle = THREE.MathUtils.degToRad(path.pitch);
+      s.angle = placeOnPlanet(point, s.base, s.pos, s.vel);
       s.roll += s.rollVel * dt;
       dir = direction(s.angle);
     } else if (s.tipping && s.alive) {
@@ -671,9 +779,11 @@ export function LaunchScene({
     if (!s.lifted && s.thrusting) v.position.x += wiggle(s.clock, 1) * 0.06;
     v.rotation.set(0, s.roll, -s.angle, "ZYX");
 
-    emitExhaust(dt, dir);
-    fields.fire.update(dt, 1.6, 2, 0.5);
-    fields.smoke.update(dt, 0.45, 1.6, 1.5);
+    const altitude = point.altitude;
+    const air = airAt(altitude);
+    emitExhaust(dt, dir, altitude);
+    fields.fire.update(dt, 1.6 * air, 2 * air, 0.5);
+    fields.smoke.update(dt, 0.45, 1.6 * air, 1.5);
 
     if (engineLight.current) {
       engineLight.current.position
@@ -685,26 +795,42 @@ export function LaunchScene({
     }
     if (flash.current) flash.current.intensity *= Math.max(0, 1 - dt * 3.5);
 
-    const altitude = Math.max(0, s.pos.y - PAD_TOP + layout.minY);
-    const physical = telemetryAt(plan, t);
-    telemetry.current = {
-      altitude: physical.altitude,
-      speed: physical.speed,
-      t,
-    };
-    const space = THREE.MathUtils.smoothstep(physical.altitude, 8_000, 60_000);
-    if (sky.current) sky.current.uniforms.uSpace.value = space;
+    telemetry.current = { altitude, speed: point.speed, t };
+    const cam = state.camera as THREE.PerspectiveCamera;
+    const cameraAltitude = altitudeOf(cam.position);
+    const space = THREE.MathUtils.smoothstep(altitude, 8_000, 60_000);
+    if (sky.current) {
+      sky.current.uniforms.uSpace.value = space;
+      localUp(cam.position, sky.current.uniforms.uUp.value);
+    }
     if (stars.current) stars.current.opacity = space;
     if (scene.fog instanceof THREE.Fog) {
+      const haze = 1 - THREE.MathUtils.smoothstep(altitude, 20_000, 70_000);
       scene.fog.near = 300 + altitude * 1.5;
-      scene.fog.far = 2400 + altitude * 6;
+      scene.fog.far = (2400 + altitude * 6) / Math.max(1e-3, haze);
     }
+    if (localGround.current)
+      localGround.current.visible = cameraAltitude < LOCAL_GROUND_CEILING;
 
-    moveCamera(state.camera as THREE.PerspectiveCamera, dt, dir, altitude);
+    if (s.alive || s.attached.size > 0)
+      s.lookAt.copy(s.pos).addScaledVector(dir, layout.height * 0.45);
+    moveCamera(cam, dt);
 
     if (celestial.current && s.arrived) {
-      celestial.current.visible = true;
       const c = celestial.current;
+      const up = localUp(cam.position);
+      const east = new THREE.Vector3(up.y, -up.x, 0);
+      c.visible = true;
+      c.position
+        .copy(cam.position)
+        .addScaledVector(
+          up
+            .multiplyScalar(0.55)
+            .addScaledVector(east, 0.35)
+            .addScaledVector(NORTH, -0.75)
+            .normalize(),
+          60_000,
+        );
       c.scale.setScalar(THREE.MathUtils.damp(c.scale.x, 1, 0.8, dt));
     }
 
@@ -750,8 +876,11 @@ export function LaunchScene({
         color="#ffb070"
       />
 
-      <Ground />
-      <Pad height={layout.height} />
+      <Planet />
+      <group ref={localGround}>
+        <Ground />
+        <Pad height={layout.height} />
+      </group>
       <Clouds />
 
       <group ref={vehicle}>
@@ -787,6 +916,7 @@ export function LaunchScene({
           finish={rocket.appearance.finish}
           glow={glow}
           smoke={fields.smoke}
+          warp={() => sim.current.warp}
         />
       ))}
 
@@ -794,14 +924,9 @@ export function LaunchScene({
       <primitive object={fields.fire.mesh} />
 
       {celestialKind && (
-        <group
-          ref={celestial}
-          position={[900, 3200, -2600]}
-          visible={false}
-          scale={0.4}
-        >
+        <group ref={celestial} visible={false} scale={0.4}>
           <mesh>
-            <sphereGeometry args={[420, 64, 32]} />
+            <sphereGeometry args={[6000, 64, 32]} />
             <meshStandardMaterial
               color={CELESTIAL[celestialKind].color}
               roughness={1}
@@ -906,17 +1031,24 @@ function Flames({
   );
 }
 
-/** A separated chunk falling (or, if still burning, flying) under simple fake physics. */
+/**
+ * A separated chunk falling (or, if still burning, flying) under simple
+ * physics on the true-scale planet. `warp` is the playback's current time
+ * warp, which scales its gravity, drag and thrust to match what the vehicle
+ * shows on screen.
+ */
 function Debris({
   spec,
   finish,
   glow,
   smoke,
+  warp,
 }: {
   spec: DebrisSpec;
   finish: RocketConfig["appearance"]["finish"];
   glow: THREE.Color;
   smoke: ParticleField;
+  warp: () => number;
 }) {
   const group = useRef<THREE.Group>(null);
   const state = useRef({
@@ -937,16 +1069,18 @@ function Debris({
     const g = group.current;
     if (!g) return;
     s.age += dt;
+    const w = warp();
     const burning = s.age < spec.burning;
-    const up = new THREE.Vector3(0, 1, 0).applyQuaternion(s.quat);
-    if (burning) s.vel.addScaledVector(up, 30 * dt);
-    else s.vel.y -= GRAVITY * dt;
-    s.vel.multiplyScalar(1 - 0.05 * dt);
+    const altitude = altitudeOf(s.pos);
+    const nose = new THREE.Vector3(0, 1, 0).applyQuaternion(s.quat);
+    const down = localUp(s.pos).negate();
+    if (burning) s.vel.addScaledVector(nose, 30 * w * w * dt);
+    s.vel.addScaledVector(down, GRAVITY * w * w * dt);
+    s.vel.multiplyScalar(1 - Math.min(0.5, 0.3 * airAt(altitude) * w * dt));
     s.pos.addScaledVector(s.vel, dt);
-    if (s.pos.y < 2) {
-      s.pos.y = 2;
+    if (altitude < 2) {
+      s.pos.addScaledVector(down, altitude - 2);
       s.vel.multiplyScalar(0.25);
-      s.vel.y = Math.abs(s.vel.y) * 0.2;
       spec.spin.multiplyScalar(0.6);
     }
     const spin = new THREE.Quaternion().setFromEuler(
@@ -955,10 +1089,14 @@ function Debris({
     s.quat.multiply(spin);
     g.position.copy(s.pos);
     g.quaternion.copy(s.quat);
-    if ((burning || s.age < 1.5) && Math.random() < 0.5) {
+    if (
+      (burning || s.age < 1.5) &&
+      altitude < SMOKE_CEILING &&
+      Math.random() < 0.5
+    ) {
       smoke.spawn({
         position: s.pos.clone(),
-        velocity: up
+        velocity: nose
           .clone()
           .multiplyScalar(-6)
           .add(
@@ -1000,7 +1138,7 @@ function Debris({
   );
 }
 
-/** Dusk gradient sky that fades to black as the rocket climbs. */
+/** Dusk gradient sky, level with the local horizon, that fades to black as the rocket climbs. */
 function Sky({
   material,
 }: {
@@ -1009,6 +1147,7 @@ function Sky({
   const uniforms = useMemo(
     () => ({
       uSpace: { value: 0 },
+      uUp: { value: new THREE.Vector3(0, 1, 0) },
       uHorizon: { value: new THREE.Color("#ffb27a") },
       uZenith: { value: new THREE.Color("#1d2c5c") },
     }),
@@ -1026,8 +1165,8 @@ function Sky({
         fog={false}
         uniforms={uniforms}
         vertexShader={`varying vec3 vDir; void main(){ vDir = normalize(position); gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`}
-        fragmentShader={`uniform float uSpace; uniform vec3 uHorizon; uniform vec3 uZenith; varying vec3 vDir;
-          void main(){ float h = clamp(vDir.y, -0.2, 1.0);
+        fragmentShader={`uniform float uSpace; uniform vec3 uUp; uniform vec3 uHorizon; uniform vec3 uZenith; varying vec3 vDir;
+          void main(){ float h = clamp(dot(normalize(vDir), uUp), -0.2, 1.0);
             vec3 sky = mix(uHorizon, uZenith, smoothstep(-0.02, 0.55, h));
             sky += vec3(1.0,0.55,0.25) * pow(max(0.0, 1.0 - abs(h) * 6.0), 3.0) * 0.4;
             vec3 space = vec3(0.01,0.012,0.03) + uHorizon * 0.05 * pow(max(0.0, 1.0 - abs(h) * 3.0), 4.0);
@@ -1072,7 +1211,61 @@ function Starfield({
   );
 }
 
-/** Flat ground with distant hills and a sea. */
+/**
+ * The whole planet at true scale, with land and sea painted into its
+ * vertices. It sits a little below the detailed pad area, which covers it
+ * near the launch site.
+ */
+function Planet() {
+  const geometry = useMemo(() => {
+    const g = new THREE.SphereGeometry(PLANET_RADIUS - 1.5, 384, 192);
+    const position = g.attributes.position;
+    const colors = new Float32Array(position.count * 3);
+    const land = new THREE.Color("#3a3a2f");
+    const dry = new THREE.Color("#5b5242");
+    const sea = new THREE.Color("#274a5e");
+    const c = new THREE.Color();
+    for (let i = 0; i < position.count; i++) {
+      const x = position.getX(i) / PLANET_RADIUS;
+      const y = position.getY(i) / PLANET_RADIUS;
+      const z = position.getZ(i) / PLANET_RADIUS;
+      const continents =
+        Math.sin(x * 9.1 + z * 4.3) +
+        Math.sin(y * 7.7 - x * 5.9) * 0.8 +
+        Math.sin(z * 13.3 + y * 3.1) * 0.5;
+      const nearPad = y > 0.9999;
+      if (!nearPad && continents < -0.25) c.copy(sea);
+      else c.copy(land).lerp(dry, 0.5 + 0.5 * Math.sin(x * 41 + z * 37));
+      colors.set([c.r, c.g, c.b], i * 3);
+    }
+    g.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+    return g;
+  }, []);
+  useEffect(() => () => geometry.dispose(), [geometry]);
+  return (
+    <mesh geometry={geometry} position={PLANET_CENTER}>
+      <meshStandardMaterial vertexColors roughness={0.95} />
+    </mesh>
+  );
+}
+
+/**
+ * A flat disc bent down to follow the planet's curvature, for laying out
+ * ground around the pad. `centerX` is where its centre sits east of the pad.
+ */
+function curvedDisc(radius: number, centerX: number): THREE.BufferGeometry {
+  const g = new THREE.RingGeometry(0, radius, 96, 24);
+  const position = g.attributes.position;
+  for (let i = 0; i < position.count; i++) {
+    const x = position.getX(i) + centerX;
+    const y = position.getY(i);
+    position.setZ(i, -(x * x + y * y) / (2 * PLANET_RADIUS));
+  }
+  g.computeVertexNormals();
+  return g;
+}
+
+/** Ground around the pad with distant hills and a sea, following the planet's curve. */
 function Ground() {
   const hills = useMemo(
     () =>
@@ -1088,14 +1281,25 @@ function Ground() {
       }),
     [],
   );
+  const land = useMemo(() => curvedDisc(8000, 0), []);
+  const sea = useMemo(() => curvedDisc(1800, 2400), []);
+  useEffect(
+    () => () => {
+      land.dispose();
+      sea.dispose();
+    },
+    [land, sea],
+  );
   return (
     <group>
-      <mesh rotation={[-Math.PI / 2, 0, 0]}>
-        <circleGeometry args={[6000, 64]} />
+      <mesh geometry={land} rotation={[-Math.PI / 2, 0, 0]}>
         <meshStandardMaterial color="#3a3a2f" roughness={1} />
       </mesh>
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[2400, 0.3, 0]}>
-        <circleGeometry args={[1800, 64]} />
+      <mesh
+        geometry={sea}
+        rotation={[-Math.PI / 2, 0, 0]}
+        position={[2400, 0.3, 0]}
+      >
         <meshStandardMaterial color="#274a5e" roughness={0.2} metalness={0.3} />
       </mesh>
       {hills.map((h, i) => (
@@ -1183,7 +1387,7 @@ function Pad({ height }: { height: number }) {
   );
 }
 
-/** Soft billboard clouds that make the climb readable. */
+/** Soft billboard clouds a couple of kilometres up, which the rocket climbs through. */
 function Clouds() {
   const texture = useMemo(() => {
     const canvas = document.createElement("canvas");
@@ -1206,11 +1410,11 @@ function Clouds() {
   useEffect(() => () => texture.dispose(), [texture]);
   const clouds = useMemo(
     () =>
-      Array.from({ length: 46 }, (_, i) => ({
-        x: ((i * 173) % 1600) - 600,
-        y: 300 + ((i * 61) % 320),
-        z: ((i * 97) % 1000) - 700,
-        s: 90 + ((i * 29) % 110),
+      Array.from({ length: 70 }, (_, i) => ({
+        x: ((i * 1733) % 22000) - 6000,
+        y: 1200 + ((i * 613) % 1800),
+        z: ((i * 977) % 9000) - 6000,
+        s: 400 + ((i * 290) % 600),
       })),
     [],
   );

@@ -25,12 +25,14 @@ type propellant struct {
 	Risk         float64
 }
 
-// propellantSpecs are rounded real-world figures.
+// propellantSpecs are game figures in the spirit of Kerbal Space Program:
+// real propellant densities, but heavier tanks and engines and lower
+// specific impulse than the real thing, so a stage carries 2 to 3 km/s.
 var propellantSpecs = map[string]propellant{
-	"solid":    {"SOLID", 1750, 242, 268, 190, 1.7, 400, false, 0.6},
-	"kerolox":  {"KEROLOX", 1030, 282, 311, 34, 1, 105, true, 0.9},
-	"methalox": {"METHALOX", 830, 305, 345, 32, 1, 100, true, 1},
-	"hydrolox": {"HYDROLOX", 360, 366, 450, 30, 0.75, 75, true, 1.2},
+	"solid":    {"SOLID", 1750, 175, 205, 460, 1.7, 90, false, 0.6},
+	"kerolox":  {"KEROLOX", 1030, 265, 310, 240, 1, 60, true, 0.9},
+	"methalox": {"METHALOX", 830, 285, 335, 205, 1, 55, true, 1},
+	"hydrolox": {"HYDROLOX", 360, 290, 390, 110, 0.75, 45, true, 1.2},
 }
 
 // nozzle is how a nozzle shape trades sea-level against vacuum performance.
@@ -44,16 +46,19 @@ var nozzleSpecs = map[string]nozzle{
 	"trumpet":   {0.96, 0.95, 1.12, 1.4},
 }
 
-// Destination targets.
+// Destination targets on the Kerbin-sized planet: delta-v from the pad with
+// typical losses, and the speed left over after escaping for Mars (a Duna
+// transfer) and for falling into the Sun.
 var (
 	deltaVNeeded = map[string]float64{
-		"nowhere": 1800, "orbit": 9300, "moon": 12400, "mars": 13200, "sun": 31000,
+		"nowhere": 1600, "orbit": 3400, "moon": 4300, "mars": 4500, "sun": 9300,
 	}
-	excessSpeedNeeded = map[string]float64{"mars": 2940, "sun": 26900}
+	excessSpeedNeeded = map[string]float64{"mars": 920, "sun": 7480}
 )
 
-// lunarDistance is the apogee radius that counts as reaching the Moon.
-const lunarDistance = 384_400_000.0
+// moonDistance is the apoapsis radius that counts as reaching the Moon, the
+// radius of the Mun's orbit.
+const moonDistance = 12_000_000.0
 
 var (
 	dragCoefficient = map[string]float64{
@@ -108,7 +113,7 @@ func newEngine(e Engine, prop string) engineModel {
 	p := propellantSpecs[prop]
 	n := nozzleSpecs[e.Style]
 	chamber := 1 + (e.Power-5)*0.006
-	thrustVac := 2.6e6 * e.Size * e.Size * (e.Power / 5) * p.ThrustFactor * n.thrust
+	thrustVac := 3.2e6 * e.Size * e.Size * (e.Power / 5) * p.ThrustFactor * n.thrust
 	ispVac := p.IspVac * n.vac * chamber
 	ispSea := p.IspSea * n.sea * chamber
 	mass := thrustVac / (g0 * p.EngineTWR)
