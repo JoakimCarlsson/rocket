@@ -1,4 +1,5 @@
 import { makeId } from "./ids";
+import { BOOSTER_TOPS } from "./parts";
 import {
   chance,
   createRng,
@@ -134,6 +135,7 @@ export function createStarterRocket(): RocketConfig {
         color: null,
       },
     ],
+    shapes: [],
     appearance: {
       primary: "#e9e7e2",
       secondary: "#17181c",
@@ -218,7 +220,7 @@ export function createRandomRocket(seed: number): RocketConfig {
       {
         height: boosterHeight,
         radius: baseRadius * randRange(rng, 0.3, 0.5),
-        top: pick(rng, ["cone", "ogive", "blunt"] as const),
+        top: pick(rng, BOOSTER_TOPS),
       },
       rng,
     ),
@@ -277,6 +279,7 @@ export function createRandomRocket(seed: number): RocketConfig {
       ? { id: makeId("leg", rng), count: 4, size: 1 }
       : null,
     decorativeParts,
+    shapes: [],
     appearance: {
       primary,
       secondary,

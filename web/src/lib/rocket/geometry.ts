@@ -1,4 +1,11 @@
-import type { DecorAttach, RocketConfig, Stage, TopKind } from "./types";
+import type {
+  BoosterTop,
+  DecorAttach,
+  RocketConfig,
+  ShapePart,
+  Stage,
+  TopKind,
+} from "./types";
 
 const TOP_HEIGHT_FACTOR: Record<TopKind, number> = {
   cone: 1.7,
@@ -7,6 +14,8 @@ const TOP_HEIGHT_FACTOR: Record<TopKind, number> = {
   blunt: 0.7,
   dome: 1,
   spike: 3,
+  round: 1,
+  bulb: 1.5,
   none: 0,
 };
 
@@ -23,6 +32,11 @@ export interface StackSection {
 /** Returns the height of the top cap for a given core radius. */
 export function topHeight(top: TopKind, radius: number): number {
   return TOP_HEIGHT_FACTOR[top] * radius;
+}
+
+/** Returns the height of a side booster's cap. */
+export function boosterTopHeight(top: BoosterTop, radius: number): number {
+  return top === "blunt" || top === "round" ? radius : radius * 2.6;
 }
 
 /** Returns the radius of the uppermost stage, which the payload sits on. */
@@ -120,4 +134,56 @@ export function decorAnchor(config: RocketConfig, attach: DecorAttach): number {
     case "bottom":
       return Math.min(core * 0.18, 6);
   }
+}
+
+/**
+ * Returns the radius of the core stack, payload or nose at a height: zero above the tip,
+ * and the bottom stage's radius below the base.
+ */
+export function hullRadiusAt(config: RocketConfig, height: number): number {
+  const sections = stackSections(config);
+  if (height <= 0) return sections[0]?.rBottom ?? 2;
+  for (let i = 0; i < sections.length; i++) {
+    const s = sections[i];
+    if (height > s.top) continue;
+    if (height < s.base && i > 0) {
+      const below = sections[i - 1];
+      const t = (height - below.top) / Math.max(0.001, s.base - below.top);
+      return below.rTop + (s.rBottom - below.rTop) * t;
+    }
+    const t = (height - s.base) / Math.max(0.001, s.top - s.base);
+    return s.rBottom + (s.rTop - s.rBottom) * t;
+  }
+  const base = coreTop(config);
+  const pHeight = payloadHeight(config);
+  const upper = upperRadius(config);
+  const payloadTop = payloadTopRadius(config);
+  if (height <= base + pHeight) {
+    const t = (height - base) / Math.max(0.001, pHeight);
+    return upper + (payloadTop - upper) * t;
+  }
+  const noseBase = base + pHeight;
+  const noseLength = topHeight(config.payload.top, upper);
+  if (noseLength <= 0 || height >= noseBase + noseLength) return 0;
+  return payloadTop * (1 - (height - noseBase) / noseLength);
+}
+
+/**
+ * Half extents of a shape's bounding box after its own pitch, yaw and roll (XYZ Euler):
+ * across the axis in x and z, along it in y.
+ */
+export function shapeExtents(shape: ShapePart): [number, number, number] {
+  const rad = Math.PI / 180;
+  const [cx, sx] = [Math.cos(shape.pitch * rad), Math.sin(shape.pitch * rad)];
+  const [cy, sy] = [Math.cos(shape.yaw * rad), Math.sin(shape.yaw * rad)];
+  const [cz, sz] = [Math.cos(shape.roll * rad), Math.sin(shape.roll * rad)];
+  const m = [
+    [cy * cz, -cy * sz, sy],
+    [cx * sz + sx * sy * cz, cx * cz - sx * sy * sz, -sx * cy],
+    [sx * sz - cx * sy * cz, sx * cz + cx * sy * sz, cx * cy],
+  ];
+  const half = [shape.width / 2, shape.height / 2, shape.depth / 2];
+  return m.map((row) =>
+    row.reduce((sum, v, j) => sum + Math.abs(v) * half[j], 0),
+  ) as [number, number, number];
 }

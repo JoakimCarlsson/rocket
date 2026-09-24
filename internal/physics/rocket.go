@@ -12,8 +12,8 @@ import (
 var (
 	nozzleStyles  = []string{"bell", "aerospike", "flared", "trumpet"}
 	propellants   = []string{"solid", "kerolox", "methalox", "hydrolox"}
-	topKinds      = []string{"cone", "ogive", "needle", "blunt", "dome", "spike", "none"}
-	boosterTops   = []string{"cone", "ogive", "blunt"}
+	topKinds      = []string{"cone", "ogive", "needle", "blunt", "dome", "spike", "round", "bulb", "none"}
+	boosterTops   = []string{"cone", "ogive", "blunt", "round"}
 	payloadKinds  = []string{"capsule", "fairing", "satellite", "cargo", "habitat", "none"}
 	finShapes     = []string{"delta", "swept", "grid", "tiny", "shark"}
 	destinations  = []string{"orbit", "moon", "mars", "sun", "nowhere"}
@@ -21,6 +21,8 @@ var (
 	decorAttaches = []string{"top", "payload", "core", "bottom"}
 	finishes      = []string{"matte", "satin", "metallic", "chrome", "glossy"}
 	patterns      = []string{"solid", "stripes", "bands", "checker", "split"}
+	shapeKinds    = []string{"sphere", "hemisphere", "capsule", "cylinder", "cone", "box", "torus", "wedge", "star", "heart", "smile"}
+	materials     = []string{"paint", "chrome", "glass", "glow"}
 )
 
 // Hard bounds that keep a configuration flyable and renderable.
@@ -30,6 +32,8 @@ const (
 	maxEngines    = 19
 	maxDecor      = 30
 	maxDecorCount = 12
+	maxShapes     = 40
+	maxShapeCount = 12
 )
 
 // Engine is one engine cluster under a stage or booster.
@@ -96,6 +100,37 @@ type Decor struct {
 	Size   float64 `json:"size"`
 }
 
+// Shape is a freeform sculpted primitive, repeated Count times around the
+// axis and optionally mirrored, used to turn a rocket into a duck, a hot dog
+// or anything else. Up is metres from the attach anchor, Angle is degrees
+// around the axis from the front, and Out is the distance of its centre from
+// the axis in metres.
+type Shape struct {
+	ID       string  `json:"id"`
+	Shape    string  `json:"shape"`
+	Attach   string  `json:"attach"`
+	Up       float64 `json:"up"`
+	Angle    float64 `json:"angle"`
+	Out      float64 `json:"out"`
+	Width    float64 `json:"width"`
+	Height   float64 `json:"height"`
+	Depth    float64 `json:"depth"`
+	Pitch    float64 `json:"pitch"`
+	Yaw      float64 `json:"yaw"`
+	Roll     float64 `json:"roll"`
+	Count    float64 `json:"count"`
+	Mirror   bool    `json:"mirror"`
+	Material string  `json:"material"`
+}
+
+// instances is how many copies of a shape are mounted.
+func (s Shape) instances() float64 {
+	if s.Mirror {
+		return s.Count * 2
+	}
+	return s.Count
+}
+
 // Appearance holds the parts of the look that the physics reads.
 type Appearance struct {
 	Finish  string `json:"finish"`
@@ -115,6 +150,7 @@ type Rocket struct {
 	Fins        *Fins      `json:"fins"`
 	Legs        *Legs      `json:"legs"`
 	Decor       []Decor    `json:"decorativeParts"`
+	Shapes      []Shape    `json:"shapes"`
 	Appearance  Appearance `json:"appearance"`
 }
 
@@ -196,6 +232,9 @@ func (r *Rocket) normalize() error {
 	if len(r.Decor) > maxDecor {
 		r.Decor = r.Decor[:maxDecor]
 	}
+	if len(r.Shapes) > maxShapes {
+		r.Shapes = r.Shapes[:maxShapes]
+	}
 	if err := oneOf("destination", &r.Destination, destinations, "orbit"); err != nil {
 		return err
 	}
@@ -263,6 +302,35 @@ func (r *Rocket) normalize() error {
 		d.Count = clampInt(d.Count, 1, maxDecorCount)
 		d.Size = clamp(d.Size, 0.2, 4)
 	}
+	for i := range r.Shapes {
+		if err := r.Shapes[i].normalize(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// normalize validates one shape and clamps its placement and size.
+func (s *Shape) normalize() error {
+	if err := oneOf("shape.shape", &s.Shape, shapeKinds, ""); err != nil {
+		return err
+	}
+	if err := oneOf("shape.attach", &s.Attach, decorAttaches, "core"); err != nil {
+		return err
+	}
+	if err := oneOf("shape.material", &s.Material, materials, "paint"); err != nil {
+		return err
+	}
+	s.Up = clamp(s.Up, -120, 120)
+	s.Angle = clamp(s.Angle, -360, 360)
+	s.Out = clamp(s.Out, 0, 60)
+	s.Width = clamp(s.Width, 0.1, 40)
+	s.Height = clamp(s.Height, 0.1, 40)
+	s.Depth = clamp(s.Depth, 0.1, 40)
+	s.Pitch = clamp(s.Pitch, -180, 180)
+	s.Yaw = clamp(s.Yaw, -180, 180)
+	s.Roll = clamp(s.Roll, -180, 180)
+	s.Count = clampInt(s.Count, 1, maxShapeCount)
 	return nil
 }
 

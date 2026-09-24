@@ -63,11 +63,11 @@ const moonDistance = 12_000_000.0
 var (
 	dragCoefficient = map[string]float64{
 		"needle": 0.22, "ogive": 0.27, "cone": 0.32, "spike": 0.3,
-		"dome": 0.45, "blunt": 0.5, "none": 0.85,
+		"dome": 0.45, "blunt": 0.5, "round": 0.42, "bulb": 0.55, "none": 0.85,
 	}
 	noseCenterOfPressure = map[string]float64{
 		"needle": 0.47, "ogive": 0.47, "cone": 0.67, "spike": 0.6,
-		"dome": 0.4, "blunt": 0.4, "none": 0,
+		"dome": 0.4, "blunt": 0.4, "round": 0.4, "bulb": 0.45, "none": 0,
 	}
 	payloadDensity = map[string]float64{
 		"capsule": 260, "fairing": 110, "satellite": 160,
@@ -86,8 +86,10 @@ var (
 		"lights": 0.05, "wings": 1.5, "flag": 0.3, "googlyEyes": 0.4,
 		"duck": 0.3, "windows": 0, "tank": 0.4, "propeller": 1.5,
 	}
-	boosterDrag = map[string]float64{"cone": 0.35, "ogive": 0.3, "blunt": 0.6}
-	sillyDecor  = map[string]bool{
+	boosterDrag = map[string]float64{
+		"cone": 0.35, "ogive": 0.3, "blunt": 0.6, "round": 0.42,
+	}
+	sillyDecor = map[string]bool{
 		"googlyEyes": true, "duck": true, "propeller": true, "spikes": true,
 	}
 )
@@ -291,10 +293,7 @@ func buildVehicle(r *Rocket) *vehicle {
 		volume := math.Pi * b.Radius * b.Radius * b.Height
 		eng := newEngine(b.Engine, b.Propellant)
 		count := int(b.Engine.Count)
-		nose := b.Radius * 2.6
-		if b.Top == "blunt" {
-			nose = b.Radius
-		}
+		nose := boosterNoseHeight(b.Top, b.Radius)
 		v.items = append(v.items, massItem{
 			key, volume*p.TankDensity + eng.mass*float64(count) + 350,
 			b.Height * 0.45, b.Height,
@@ -420,6 +419,10 @@ func buildVehicle(r *Rocket) *vehicle {
 		case "propeller":
 			v.propellerThrust += 4000 * scale
 		}
+	}
+
+	for _, s := range r.Shapes {
+		v.addShape(r, s)
 	}
 
 	v.height = r.totalHeight()

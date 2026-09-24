@@ -47,6 +47,7 @@ The Deploy workflow runs on the self-hosted GitHub Actions runner, reads the rep
 | Ascent autopilot: MechJeb-style classic ascent (vertical rise, angle-of-attack-limited gravity turn, cut-off at an 80 km apoapsis, coast, circularisation), with the turn shape chosen by rehearsal flights in calm and windy air | `internal/physics/{fly,ascent}.go` |
 | Launch plan (outcome, report, staging summary, repair notes) and random-rocket engine tuning | `internal/physics/{plan,tune}.go`, `internal/httpx/physics_endpoint.go` |
 | Client for the physics API and playback of a flight with smooth time warp | `web/src/lib/physics/*`, `web/src/lib/sim/playback.ts` |
+| Sculpted shapes (spheres, wedges, stars… placed around the hull) that turn a rocket into a duck or a hot dog: layout, rendering, and their mass, drag and lift | `web/src/lib/rocket/layout.ts`, `web/src/components/three/PartMesh.tsx`, `internal/physics/shape.go` |
 | Joke meters | `web/src/lib/rocket/stats.ts` |
 | AI action schema and output validation | `web/src/lib/ai/actions.ts` |
 | Provider interface, hosted-model client | `web/src/lib/ai/{provider,remote-provider,client}.ts` |

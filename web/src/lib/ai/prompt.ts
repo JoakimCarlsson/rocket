@@ -1,4 +1,6 @@
 import type { Analysis } from "../physics/api";
+import { decorAnchor, hullRadiusAt } from "../rocket/geometry";
+import { ATTACH_POINTS } from "../rocket/parts";
 import type { RocketConfig } from "../rocket/types";
 import type { InterpretRequest } from "./provider";
 
@@ -30,6 +32,7 @@ export function describeRocket(
       height: +b.height.toFixed(1),
       radius: +b.radius.toFixed(2),
       propellant: b.propellant,
+      top: b.top,
       gimbal: b.engine.gimbal,
       color: b.color,
     })),
@@ -37,6 +40,8 @@ export function describeRocket(
     fins: rocket.fins,
     legs: rocket.legs,
     decorativeParts: rocket.decorativeParts,
+    shapes: rocket.shapes,
+    anchors: anchorsOf(rocket),
     appearance: rocket.appearance,
     fictionalStats: analysis.stats,
     staging: analysis.staging.map((p) => ({
@@ -45,6 +50,23 @@ export function describeRocket(
       twr: +p.twr.toFixed(2),
     })),
   });
+}
+
+/** Height of every attach anchor and the hull radius there, so the model can place shapes in metres. */
+function anchorsOf(rocket: RocketConfig) {
+  return Object.fromEntries(
+    ATTACH_POINTS.map((attach) => {
+      const y = decorAnchor(rocket, attach);
+      const below = attach === "top" ? y - 0.5 : y;
+      return [
+        attach,
+        {
+          height: +y.toFixed(1),
+          hullRadius: +hullRadiusAt(rocket, below).toFixed(2),
+        },
+      ];
+    }),
+  );
 }
 
 /** Builds the user turn for a hosted model from an interpret request and the rocket's analysis. */

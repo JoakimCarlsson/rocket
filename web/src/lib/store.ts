@@ -397,11 +397,11 @@ export const useBuilder = create<BuilderState>((set, get) => {
     },
 
     finishLaunch() {
-      const { plan } = get();
+      const { plan, rocket } = get();
       if (!plan) return;
       set({ mode: "report" });
       sound.play(plan.report.grade === "failure" ? "fail" : "success");
-      unlock(launchAchievements(plan));
+      unlock(launchAchievements(plan, rocket));
     },
 
     backToBuild() {

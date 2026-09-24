@@ -15,7 +15,12 @@ export type TopKind =
   | "blunt"
   | "dome"
   | "spike"
+  | "round"
+  | "bulb"
   | "none";
+
+/** Shape of a side booster's cap. */
+export type BoosterTop = "cone" | "ogive" | "blunt" | "round";
 
 /** What the rocket carries under its top. */
 export type PayloadKind =
@@ -80,7 +85,7 @@ export interface Booster {
   height: number;
   radius: number;
   color: string | null;
-  top: "cone" | "ogive" | "blunt";
+  top: BoosterTop;
   propellant: Propellant;
   engine: EngineSpec;
 }
@@ -127,6 +132,50 @@ export interface DecorPart {
   color: string | null;
 }
 
+/** Primitive a sculpted shape is made from. */
+export type ShapeKind =
+  | "sphere"
+  | "hemisphere"
+  | "capsule"
+  | "cylinder"
+  | "cone"
+  | "box"
+  | "torus"
+  | "wedge"
+  | "star"
+  | "heart"
+  | "smile";
+
+/** Surface of a sculpted shape. */
+export type ShapeMaterial = "paint" | "chrome" | "glass" | "glow";
+
+/**
+ * A freeform sculpted primitive, the building block for turning a rocket into a duck,
+ * a hot dog or anything else. `up` is metres from the attach anchor, `angle` is degrees
+ * around the axis from the front (90 = right), and `out` is the distance of its centre
+ * from the axis in metres. `count` repeats the shape evenly
+ * around the axis and `mirror` adds a mirror image on the other side.
+ */
+export interface ShapePart {
+  id: string;
+  label: string;
+  shape: ShapeKind;
+  attach: DecorAttach;
+  up: number;
+  angle: number;
+  out: number;
+  width: number;
+  height: number;
+  depth: number;
+  pitch: number;
+  yaw: number;
+  roll: number;
+  count: number;
+  mirror: boolean;
+  material: ShapeMaterial;
+  color: string | null;
+}
+
 /** Global look of the vehicle. */
 export interface Appearance {
   primary: string;
@@ -150,6 +199,7 @@ export interface RocketConfig {
   fins: FinSet | null;
   legs: LegSet | null;
   decorativeParts: DecorPart[];
+  shapes: ShapePart[];
   appearance: Appearance;
 }
 

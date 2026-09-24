@@ -75,7 +75,9 @@ func computeStats(r *Rocket, v *vehicle) Stats {
 	_, cp := v.centerOfPressure(attached)
 	reliability := math.Round(clamp(hardwareReliability(risks(r, v)), 1, 99))
 
-	parts := float64(len(r.Stages) + len(r.Boosters) + len(r.Decor))
+	parts := float64(
+		len(r.Stages) + len(r.Boosters) + len(r.Decor) + len(r.Shapes),
+	)
 	if r.Fins != nil {
 		parts++
 	}
@@ -93,6 +95,8 @@ func computeStats(r *Rocket, v *vehicle) Stats {
 			silly++
 		}
 	}
+	decor += sculptedPieces(r) * 0.4
+	silly += math.Floor(float64(len(r.Shapes)) / 4)
 	finish := map[string]float64{
 		"matte": 1, "satin": 1.1, "metallic": 1.25, "chrome": 1.8, "glossy": 1.15,
 	}[r.Appearance.Finish]
@@ -240,6 +244,7 @@ func risks(r *Rocket, v *vehicle) []risk {
 			silly++
 		}
 	}
+	decor += sculptedPieces(r) * 0.4
 	payload := 0.003 + silly*0.008
 	if r.Payload.Top == "none" {
 		payload += 0.01
@@ -279,4 +284,13 @@ func problems(r *Rocket, s Stats) []Problem {
 		out = append(out, Problem{"crew", "crew has no heat shield and parachutes to come home"})
 	}
 	return out
+}
+
+// sculptedPieces is how many sculpted shape instances are bolted on.
+func sculptedPieces(r *Rocket) float64 {
+	n := 0.0
+	for _, s := range r.Shapes {
+		n += s.instances()
+	}
+	return n
 }

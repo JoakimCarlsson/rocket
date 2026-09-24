@@ -1,5 +1,12 @@
 import { z } from "zod";
 import { resolveColor } from "../rocket/colors";
+import {
+  ATTACH_POINTS,
+  BOOSTER_TOPS,
+  SHAPE_KINDS,
+  SHAPE_MATERIALS,
+  TOP_KINDS,
+} from "../rocket/parts";
 
 const color = z.string().transform((value, ctx) => {
   const resolved = resolveColor(value);
@@ -45,6 +52,60 @@ const decorKind = z.enum([
   "propeller",
 ]);
 
+const SHAPE_ALIASES: Record<string, string> = {
+  triangle: "wedge",
+  fin: "wedge",
+  prism: "wedge",
+  beak: "wedge",
+  ball: "sphere",
+  ellipsoid: "sphere",
+  egg: "sphere",
+  orb: "sphere",
+  dome: "hemisphere",
+  cube: "box",
+  block: "box",
+  plate: "box",
+  ring: "torus",
+  donut: "torus",
+  doughnut: "torus",
+  pyramid: "cone",
+  tube: "cylinder",
+  pipe: "cylinder",
+  rod: "cylinder",
+  pill: "capsule",
+  sausage: "capsule",
+  mouth: "smile",
+  arc: "smile",
+};
+
+/** Maps the shape names models reach for, like "triangle" or "ball", onto the primitives that exist. */
+const shapeKind = z.preprocess(
+  (value) =>
+    typeof value === "string"
+      ? (SHAPE_ALIASES[value.trim().toLowerCase()] ??
+        value.trim().toLowerCase())
+      : value,
+  z.enum(SHAPE_KINDS),
+);
+
+const shapeFields = {
+  label: z.string().max(40).optional(),
+  attach: z.enum(ATTACH_POINTS).optional(),
+  up: z.number().optional(),
+  angle: z.number().optional(),
+  out: z.number().optional(),
+  width: z.number().positive().optional(),
+  height: z.number().positive().optional(),
+  depth: z.number().positive().optional(),
+  pitch: z.number().optional(),
+  yaw: z.number().optional(),
+  roll: z.number().optional(),
+  count: z.number().int().min(1).max(12).optional(),
+  mirror: z.boolean().optional(),
+  material: z.enum(SHAPE_MATERIALS).optional(),
+  color: color.optional(),
+};
+
 /**
  * Every modification the AI may request. The model only ever produces data that matches
  * one of these shapes; nothing it returns is executed.
@@ -72,6 +133,10 @@ export const actionSchema = z.discriminatedUnion("type", [
     size: size.optional(),
   }),
   z.object({
+    type: z.literal("set_booster_top"),
+    kind: z.enum(BOOSTER_TOPS),
+  }),
+  z.object({
     type: z.literal("scale"),
     target: z.enum([
       "rocket",
@@ -81,6 +146,7 @@ export const actionSchema = z.discriminatedUnion("type", [
       "engines",
       "fins",
       "decor",
+      "shapes",
       "id",
     ]),
     id: componentId.optional(),
@@ -146,7 +212,7 @@ export const actionSchema = z.discriminatedUnion("type", [
   }),
   z.object({
     type: z.literal("set_top"),
-    kind: z.enum(["cone", "ogive", "needle", "blunt", "dome", "spike", "none"]),
+    kind: z.enum(TOP_KINDS),
     color: color.optional(),
   }),
   z.object({
@@ -190,6 +256,19 @@ export const actionSchema = z.discriminatedUnion("type", [
     type: z.literal("set_tilt"),
     degrees: z.number().min(-180).max(180),
   }),
+  z.object({
+    type: z.literal("add_shape"),
+    shape: shapeKind,
+    ...shapeFields,
+  }),
+  z.object({
+    type: z.literal("edit_shape"),
+    id: z.string().max(40),
+    shape: shapeKind.optional(),
+    ...shapeFields,
+  }),
+  z.object({ type: z.literal("clear_shapes") }),
+  z.object({ type: z.literal("start_over") }),
   z.object({ type: z.literal("remove_part"), id: componentId }),
 ]);
 
@@ -210,7 +289,7 @@ export interface AIResult {
   provider: string;
 }
 
-const MAX_ACTIONS = 24;
+const MAX_ACTIONS = 40;
 
 /**
  * Validates raw model output. Each action is checked on its own so one bad entry
@@ -230,7 +309,9 @@ export function validateModelOutput(raw: unknown, provider: string): AIResult {
   const actions: RocketAction[] = [];
   let rejected = 0;
   for (const candidate of envelope.data.actions.slice(0, MAX_ACTIONS)) {
-    const parsed = actionSchema.safeParse(targetById(stripNulls(candidate)));
+    const parsed = actionSchema.safeParse(
+      targetById(coerceScalars(stripNulls(candidate))),
+    );
     if (parsed.success) actions.push(parsed.data);
     else rejected++;
   }
@@ -250,6 +331,23 @@ function stripNulls(value: unknown): unknown {
   if (!value || typeof value !== "object" || Array.isArray(value)) return value;
   return Object.fromEntries(
     Object.entries(value).filter(([, v]) => v !== null),
+  );
+}
+
+const TEXT_FIELDS = new Set(["type", "name", "label", "id", "value", "color"]);
+const NUMERIC = /^-?\d+(\.\d+)?$/;
+
+/** Turns numbers and booleans that a model sent as strings, like "8" or "true", back into scalars. */
+function coerceScalars(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  return Object.fromEntries(
+    Object.entries(value).map(([key, v]) => {
+      if (typeof v !== "string" || TEXT_FIELDS.has(key)) return [key, v];
+      const text = v.trim();
+      if (NUMERIC.test(text)) return [key, Number(text)];
+      if (text === "true" || text === "false") return [key, text === "true"];
+      return [key, v];
+    }),
   );
 }
 

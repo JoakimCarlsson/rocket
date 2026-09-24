@@ -3,13 +3,14 @@
 import { useFrame } from "@react-three/fiber";
 import { createContext, useContext, useEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
-import type { PlacedPart } from "@/lib/rocket/layout";
-import type { Finish, Pattern } from "@/lib/rocket/types";
+import type { PlacedPart, ShapeInfo } from "@/lib/rocket/layout";
+import type { Finish, Pattern, ShapeMaterial } from "@/lib/rocket/types";
 import {
   columnGeometry,
   finGeometry,
   noseGeometry,
   nozzleGeometry,
+  shapeGeometry,
 } from "./geometry";
 import { bodyTexture, FINISH_PROPS } from "./materials";
 
@@ -135,6 +136,8 @@ export function PartMesh({ part, finish }: PartMeshProps) {
       return <Tank part={part} finish={finish} />;
     case "propeller":
       return <Propeller part={part} />;
+    case "shape":
+      return <Sculpted part={part} finish={finish} />;
   }
 }
 
@@ -721,6 +724,79 @@ function Propeller({ part }: { part: PlacedPart }) {
           <meshStandardMaterial color={part.color} />
         </mesh>
       </group>
+    </group>
+  );
+}
+
+/** Picks the material for a sculpted shape's surface. */
+function useShapeMaterial(
+  color: string,
+  material: ShapeMaterial,
+  finish: Finish,
+): THREE.Material {
+  const paint = useSurface(color, finish);
+  const special = useMemo(() => {
+    switch (material) {
+      case "chrome":
+        return new THREE.MeshPhysicalMaterial({
+          metalness: 1,
+          roughness: 0.08,
+          clearcoat: 1,
+          envMapIntensity: 1.6,
+        });
+      case "glass":
+        return new THREE.MeshPhysicalMaterial({
+          metalness: 0,
+          roughness: 0.04,
+          transmission: 0.9,
+          thickness: 0.6,
+          ior: 1.35,
+          transparent: true,
+          opacity: 0.6,
+          clearcoat: 1,
+          envMapIntensity: 1.6,
+        });
+      case "glow":
+        return new THREE.MeshBasicMaterial({ toneMapped: false });
+      default:
+        return null;
+    }
+  }, [material]);
+  useEffect(() => {
+    if (!special) return;
+    const tint = new THREE.Color(color);
+    (special as THREE.MeshBasicMaterial).color.copy(
+      material === "glow" ? tint.multiplyScalar(2.2) : tint,
+    );
+  }, [special, color, material]);
+  useEffect(() => () => special?.dispose(), [special]);
+  return special ?? paint;
+}
+
+/** A freeform sculpted primitive, turned by its own rotation inside the part's placement. */
+function Sculpted({ part, finish }: PartMeshProps) {
+  const info = part.shape as ShapeInfo;
+  const [w, h, d] = info.size;
+  const realSize = info.kind === "capsule";
+  const geometry = useGeometry(
+    () => shapeGeometry(info.kind, w, h, d),
+    [info.kind, realSize ? w : 0, realSize ? h : 0, realSize ? d : 0],
+  );
+  const material = useShapeMaterial(part.color, info.material, finish);
+  const radius = Math.min(w, d, h) / 2;
+  const scale: [number, number, number] = realSize
+    ? [w / (2 * radius), 1, d / (2 * radius)]
+    : [w, h, d];
+  if (info.mirrored) scale[0] = -scale[0];
+  return (
+    <group rotation={info.euler}>
+      <mesh
+        geometry={geometry}
+        material={material}
+        scale={scale}
+        castShadow
+        receiveShadow
+      />
     </group>
   );
 }

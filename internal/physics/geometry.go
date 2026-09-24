@@ -5,7 +5,7 @@ import "math"
 // topHeightFactor is how tall each nose shape is per metre of radius.
 var topHeightFactor = map[string]float64{
 	"cone": 1.7, "ogive": 2.1, "needle": 3.6, "blunt": 0.7,
-	"dome": 1, "spike": 3, "none": 0,
+	"dome": 1, "spike": 3, "round": 1, "bulb": 1.5, "none": 0,
 }
 
 // section is one core stage body placed on the stack, measured from the
@@ -22,6 +22,14 @@ type section struct {
 // topHeight is the height of the nose cap for a given radius.
 func topHeight(top string, radius float64) float64 {
 	return topHeightFactor[top] * radius
+}
+
+// boosterNoseHeight is the height of a booster's cap.
+func boosterNoseHeight(top string, radius float64) float64 {
+	if top == "blunt" || top == "round" {
+		return radius
+	}
+	return radius * 2.6
 }
 
 // interstageHeight is the adapter joining two stacked stages.
@@ -133,4 +141,38 @@ func (r *Rocket) stageIndexAt(height float64) int {
 		}
 	}
 	return -1
+}
+
+// hullRadiusAt is the radius of the core stack, payload or nose at a height,
+// zero above the tip and the bottom stage's radius below the base.
+func (r *Rocket) hullRadiusAt(height float64) float64 {
+	secs := r.sections()
+	if height <= 0 {
+		return secs[0].rBottom
+	}
+	for i, s := range secs {
+		if height > s.top {
+			continue
+		}
+		if height < s.base && i > 0 {
+			below := secs[i-1]
+			t := (height - below.top) / math.Max(0.001, s.base-below.top)
+			return below.rTop + (s.rBottom-below.rTop)*t
+		}
+		t := (height - s.base) / math.Max(0.001, s.top-s.base)
+		return s.rBottom + (s.rTop-s.rBottom)*t
+	}
+	base := r.coreTop()
+	upper, payloadTop := r.upperRadius(), r.payloadTopRadius()
+	pHeight := r.payloadHeight()
+	if height <= base+pHeight {
+		t := (height - base) / math.Max(0.001, pHeight)
+		return upper + (payloadTop-upper)*t
+	}
+	noseBase := base + pHeight
+	noseLength := topHeight(r.Payload.Top, upper)
+	if noseLength <= 0 || height >= noseBase+noseLength {
+		return 0
+	}
+	return payloadTop * (1 - (height-noseBase)/noseLength)
 }

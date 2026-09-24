@@ -1,6 +1,12 @@
 import type { RocketAction } from "../ai/actions";
 import { RAINBOW } from "./colors";
-import { createBooster, createEngine, createStage } from "./defaults";
+import {
+  createBooster,
+  createEngine,
+  createStage,
+  DEFAULT_NAME,
+} from "./defaults";
+import { decorAnchor, hullRadiusAt } from "./geometry";
 import { makeId } from "./ids";
 import { LIMITS, SIZE_FACTOR } from "./limits";
 import { sanitizeRocket } from "./schema";
@@ -8,9 +14,12 @@ import type {
   Booster,
   EngineSpec,
   RocketConfig,
+  ShapePart,
   SizeClass,
   Stage,
 } from "./types";
+
+type ShapeAction = Extract<RocketAction, { type: "add_shape" | "edit_shape" }>;
 
 /** Result of applying a batch of actions. */
 export interface ApplyResult {
@@ -202,6 +211,8 @@ function applyAction(
         config.fins.size *= target === "rocket" ? Math.sqrt(w) : Math.max(h, w);
       if (target === "decor")
         config.decorativeParts.forEach((d) => (d.size *= Math.max(h, w)));
+      if (target === "rocket" || target === "shapes")
+        config.shapes.forEach((shape) => scaleShape(shape, h, w));
       if (target === "id" && action.id) {
         const column = [...config.stages, ...config.boosters].find(
           (c) => c.id === action.id,
@@ -211,6 +222,8 @@ function applyAction(
         if (decor) decor.size *= Math.max(h, w);
         if (config.payload.id === action.id) config.payload.height *= h;
         if (config.fins?.id === action.id) config.fins.size *= Math.max(h, w);
+        const shape = findShape(config, action.id);
+        if (shape) scaleShape(shape, h, w);
       }
       break;
     }
@@ -378,11 +391,139 @@ function applyAction(
     case "set_tilt":
       config.tilt = action.degrees;
       break;
+    case "set_booster_top":
+      config.boosters.forEach((b) => (b.top = action.kind));
+      break;
+    case "add_shape":
+      if (config.shapes.length >= LIMITS.shapes) {
+        notes.push(`Sculpture limit of ${LIMITS.shapes} shapes reached.`);
+        break;
+      }
+      config.shapes.push(newShape(config, action));
+      break;
+    case "edit_shape": {
+      const shape = findShape(config, action.id);
+      if (shape) Object.assign(shape, shapeChanges(action));
+      break;
+    }
+    case "clear_shapes":
+      config.shapes = [];
+      break;
+    case "start_over":
+      return bareRocket(config);
     case "remove_part":
       removePart(config, action.id, notes);
       break;
   }
   return config;
+}
+
+/** Keeps only the fields of a shape action that were actually set. */
+function shapeChanges(action: ShapeAction): Partial<ShapePart> {
+  const {
+    type: _type,
+    id: _id,
+    ...fields
+  } = action as ShapeAction & {
+    id?: string;
+  };
+  return Object.fromEntries(
+    Object.entries(fields).filter(([, v]) => v !== undefined),
+  ) as Partial<ShapePart>;
+}
+
+/**
+ * Builds a sculpted shape, filling unset sizes from the ones given so a lone width still
+ * makes a round ball, and sitting it on the skin unless told how far out it goes.
+ */
+function newShape(
+  config: RocketConfig,
+  action: Extract<ShapeAction, { type: "add_shape" }>,
+): ShapePart {
+  const given = [action.width, action.height, action.depth].filter(
+    (v): v is number => v !== undefined,
+  );
+  const fallback = given.length
+    ? given.reduce((a, b) => a + b, 0) / given.length
+    : 2;
+  const attach = action.attach ?? "core";
+  const anchor = decorAnchor(config, attach) + (action.up ?? 0);
+  return {
+    id: makeId("shp"),
+    label: action.shape,
+    attach,
+    up: 0,
+    angle: 0,
+    out: attach === "top" ? 0 : hullRadiusAt(config, anchor),
+    pitch: 0,
+    yaw: 0,
+    roll: 0,
+    count: 1,
+    mirror: false,
+    material: "paint",
+    color: null,
+    ...shapeChanges(action),
+    shape: action.shape,
+    width: action.width ?? fallback,
+    height: action.height ?? fallback,
+    depth: action.depth ?? fallback,
+  };
+}
+
+/** Finds a shape by id or, since models remember names better than ids, by label. */
+function findShape(config: RocketConfig, key: string): ShapePart | undefined {
+  const wanted = key.trim().toLowerCase();
+  return (
+    config.shapes.find((s) => s.id === key) ??
+    config.shapes.find((s) => s.label.toLowerCase() === wanted)
+  );
+}
+
+/** Scales a shape and its offsets, keeping it where it sat on the hull. */
+function scaleShape(shape: ShapePart, h: number, w: number): void {
+  shape.width *= w;
+  shape.depth *= w;
+  shape.out *= w;
+  shape.height *= h;
+  shape.up *= h;
+}
+
+/** A plain flyable two-stage rocket in the current colours, for building something new from scratch. */
+function bareRocket(config: RocketConfig): RocketConfig {
+  return {
+    ...config,
+    name: DEFAULT_NAME,
+    tilt: 0,
+    stages: [
+      createStage({
+        height: 28,
+        radius: 2.4,
+        engine: createEngine({ count: 5, size: 0.9, power: 5 }),
+      }),
+      createStage({
+        height: 14,
+        radius: 2.4,
+        engine: createEngine({ count: 1, size: 1.1, power: 4 }),
+      }),
+    ],
+    boosters: [],
+    payload: {
+      id: makeId("pld"),
+      kind: "capsule",
+      height: 5,
+      crew: 2,
+      color: null,
+      top: "ogive",
+      topColor: null,
+      heatShield: true,
+      parachutes: true,
+    },
+    fins: null,
+    legs: null,
+    decorativeParts: [],
+    shapes: [],
+    appearance: { ...config.appearance, pattern: "solid" },
+  };
 }
 
 /** Picks where a decoration looks best when the AI did not say. */
@@ -422,6 +563,9 @@ function applyColor(
     );
     config.decorativeParts.forEach(
       (d, i) => (d.color = RAINBOW[(i + 5) % RAINBOW.length]),
+    );
+    config.shapes.forEach(
+      (shape, i) => (shape.color = RAINBOW[(i + 2) % RAINBOW.length]),
     );
     return;
   }
@@ -473,6 +617,8 @@ function applyColor(
         ...config.decorativeParts,
       ].find((c) => c.id === id);
       if (item) item.color = value;
+      const shape = id ? findShape(config, id) : undefined;
+      if (shape) shape.color = value;
       if (config.payload.id === id) config.payload.color = value;
       if (config.fins && config.fins.id === id) config.fins.color = value;
       break;
@@ -489,6 +635,8 @@ function removePart(config: RocketConfig, id: string, notes: string[]): void {
   }
   config.boosters = config.boosters.filter((b) => b.id !== id);
   config.decorativeParts = config.decorativeParts.filter((d) => d.id !== id);
+  const shape = findShape(config, id);
+  config.shapes = config.shapes.filter((s) => s !== shape);
   if (config.fins?.id === id) config.fins = null;
   if (config.legs?.id === id) config.legs = null;
   if (config.payload.id === id) {

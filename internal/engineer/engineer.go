@@ -52,6 +52,16 @@ type action struct {
 	Gimbal     *bool    `json:"gimbal"`
 	HeatShield *bool    `json:"heatShield"`
 	Parachutes *bool    `json:"parachutes"`
+	Label      *string  `json:"label"`
+	Material   *string  `json:"material"`
+	Up         *float64 `json:"up"`
+	Angle      *float64 `json:"angle"`
+	Out        *float64 `json:"out"`
+	Depth      *float64 `json:"depth"`
+	Pitch      *float64 `json:"pitch"`
+	Yaw        *float64 `json:"yaw"`
+	Roll       *float64 `json:"roll"`
+	Mirror     *bool    `json:"mirror"`
 }
 
 // interpretationSchema constrains the call, derived from the struct so the

@@ -1,13 +1,22 @@
 import {
+  boosterTopHeight,
   decorAnchor,
   finGeometry,
   interstageHeight,
   payloadHeight,
   payloadTopRadius,
+  shapeExtents,
   topHeight,
 } from "./geometry";
 import { FAIRING_OWNER, PROPELLANT_LABELS, UPPER_OWNER } from "./parts";
-import type { DecorPart, EngineSpec, RocketConfig, Stage } from "./types";
+import type {
+  DecorPart,
+  EngineSpec,
+  RocketConfig,
+  ShapeKind,
+  ShapeMaterial,
+  Stage,
+} from "./types";
 
 /** Every primitive the renderer knows how to draw. */
 export type PartKind =
@@ -33,7 +42,17 @@ export type PartKind =
   | "duck"
   | "window"
   | "tank"
-  | "propeller";
+  | "propeller"
+  | "shape";
+
+/** Extra data for a sculpted shape: its full size, own rotation and surface. */
+export interface ShapeInfo {
+  kind: ShapeKind;
+  size: [number, number, number];
+  euler: [number, number, number];
+  mirrored: boolean;
+  material: ShapeMaterial;
+}
 
 /** A positioned renderable piece. Segment names group parts that separate together during launch. */
 export interface PlacedPart {
@@ -47,6 +66,7 @@ export interface PlacedPart {
   dims: { h: number; r: number; r2: number; s: number };
   color: string;
   color2: string;
+  shape?: ShapeInfo;
 }
 
 /** A technical callout anchored somewhere on the vehicle. */
@@ -426,8 +446,11 @@ export function layoutRocket(config: RocketConfig): RocketLayout {
     );
   });
 
+  const sculpture = layoutShapes(config, segmentAt, push, labels);
+
   const minY = Math.min(
     0,
+    sculpture.bottom,
     ...parts
       .filter((p) => p.kind === "engine" || p.kind === "leg")
       .map((p) =>
@@ -437,6 +460,7 @@ export function layoutRocket(config: RocketConfig): RocketLayout {
   const coreRadius = Math.max(...stack.map((s) => s.rBottom), 1);
   const extent = Math.max(
     coreRadius,
+    sculpture.reach,
     ...parts
       .filter(
         (p) => p.kind === "booster" || p.kind === "wing" || p.kind === "fin",
@@ -449,7 +473,7 @@ export function layoutRocket(config: RocketConfig): RocketLayout {
     parts,
     labels,
     nozzles,
-    height,
+    height: Math.max(height, sculpture.top),
     minY,
     radius: coreRadius,
     width: extent * 2,
@@ -517,7 +541,7 @@ function layoutBoosters(
         variant: booster.top,
         position: [x, lift + booster.height, z],
         dims: {
-          h: booster.radius * (booster.top === "blunt" ? 1 : 2.6),
+          h: boosterTopHeight(booster.top, booster.radius),
           r: booster.radius,
           r2: booster.radius,
           s: 1,
@@ -819,4 +843,85 @@ function layoutDecor(
       });
       break;
   }
+}
+
+/** How far the sculpted shapes reach: lowest and highest point and widest radius. */
+interface SculptureExtent {
+  bottom: number;
+  top: number;
+  reach: number;
+}
+
+/** Places every sculpted shape, expanding counts and mirror images into separate parts. */
+function layoutShapes(
+  config: RocketConfig,
+  segmentAt: (y: number) => string,
+  push: Push,
+  labels: PartLabel[],
+): SculptureExtent {
+  const extent: SculptureExtent = { bottom: 0, top: 0, reach: 0 };
+  const deg = Math.PI / 180;
+  config.shapes.forEach((shape) => {
+    const y = decorAnchor(config, shape.attach) + shape.up;
+    const radial = shape.out;
+    const segment =
+      shape.attach === "top" || shape.attach === "payload"
+        ? UPPER_SEGMENT
+        : segmentAt(Math.max(0, y));
+    const [ex, ey, ez] = shapeExtents(shape);
+    extent.bottom = Math.min(extent.bottom, y - ey);
+    extent.top = Math.max(extent.top, y + ey);
+    extent.reach = Math.max(extent.reach, radial + Math.max(ex, ez));
+    const place = (angle: number, mirrored: boolean, key: string) => {
+      const a = angle * deg;
+      const flip = mirrored ? -1 : 1;
+      push({
+        key: `${shape.id}:${key}`,
+        sourceId: shape.id,
+        kind: "shape",
+        segment,
+        variant: shape.shape,
+        position: [Math.sin(a) * radial, y, Math.cos(a) * radial],
+        rotation: [0, a, 0],
+        dims: {
+          h: shape.height,
+          r: Math.max(shape.width, shape.depth) / 2,
+          r2: 0,
+          s: 1,
+        },
+        color: shape.color ?? config.appearance.primary,
+        color2: config.appearance.secondary,
+        shape: {
+          kind: shape.shape,
+          size: [shape.width, shape.height, shape.depth],
+          euler: [
+            shape.pitch * deg,
+            shape.yaw * deg * flip,
+            shape.roll * deg * flip,
+          ],
+          mirrored,
+          material: shape.material,
+        },
+      });
+    };
+    for (let i = 0; i < shape.count; i++) {
+      const angle = shape.angle + (i * 360) / shape.count;
+      place(angle, false, `${i}`);
+      if (shape.mirror) place(-angle, true, `${i}:m`);
+    }
+  });
+  const first = config.shapes[0];
+  if (first)
+    labels.push({
+      key: "shapes:label",
+      title: "SCULPTURE",
+      detail: `${config.shapes.length} PIECE${config.shapes.length > 1 ? "S" : ""} · ${first.label.toUpperCase()}`,
+      position: [
+        extent.reach + 0.4,
+        decorAnchor(config, first.attach) + first.up,
+        0,
+      ],
+      side: "right",
+    });
+  return extent;
 }

@@ -50,6 +50,16 @@ export const ACHIEVEMENTS: Achievement[] = [
     title: "MORALE OFFICER",
     description: "Install a rubber duck.",
   },
+  {
+    id: "sculptor",
+    title: "MODERN ART",
+    description: "Sculpt a rocket out of eight or more shapes.",
+  },
+  {
+    id: "flying_sculpture",
+    title: "IT FLIES, SOMEHOW",
+    description: "Reach orbit with a sculpted rocket.",
+  },
   { id: "orbit", title: "OFFICIALLY IN SPACE", description: "Reach orbit." },
 ];
 
@@ -64,13 +74,20 @@ export function configAchievements(
   if (Math.abs(config.tilt) >= 45) earned.push("sideways");
   if (config.destination === "moon") earned.push("moon_or_bust");
   if (stats.height > 150) earned.push("absolute_unit");
-  if (config.decorativeParts.some((d) => d.kind === "duck"))
+  if (
+    config.decorativeParts.some((d) => d.kind === "duck") ||
+    config.shapes.some((s) => /duck/i.test(s.label))
+  )
     earned.push("quack");
+  if (config.shapes.length >= 8) earned.push("sculptor");
   return earned;
 }
 
-/** Returns ids of achievements earned by a launch. */
-export function launchAchievements(plan: LaunchPlan): string[] {
+/** Returns ids of achievements earned by a launch of a configuration. */
+export function launchAchievements(
+  plan: LaunchPlan,
+  config: RocketConfig,
+): string[] {
   const earned: string[] = [];
   if (
     plan.outcome === "against_all_odds" ||
@@ -80,6 +97,8 @@ export function launchAchievements(plan: LaunchPlan): string[] {
   if (plan.events.some((e) => e.type === "explode" || e.type === "impact"))
     earned.push("kaboom");
   if (plan.report.grade === "success") earned.push("orbit");
+  if (plan.report.grade === "success" && config.shapes.length >= 4)
+    earned.push("flying_sculpture");
   return earned;
 }
 

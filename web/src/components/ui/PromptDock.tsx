@@ -6,7 +6,9 @@ import { NO_RESTORE } from "@/lib/dom";
 import { Icon } from "./Icon";
 
 const FIRST_SUGGESTIONS = [
+  "Build me a duck rocket",
   "Build a Mars rocket",
+  "Build a hot dog rocket",
   "Add way too many boosters",
   "Make the cheapest rocket possible",
   "Make it enormous",
@@ -24,6 +26,13 @@ const FOLLOW_UPS = [
   "Add a rubber duck",
   "Checkered racing stripes",
   "Make it look completely ridiculous",
+  "Turn it into a shark",
+  "Give it a face",
+  "Build me a banana rocket",
+  "Give it a top hat and a moustache",
+  "Turn it into a giant carrot",
+  "Build a rocket shaped like a lighthouse",
+  "Add a glowing halo",
 ];
 
 /** Types out the engineer's latest line. */

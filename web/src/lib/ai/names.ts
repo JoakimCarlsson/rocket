@@ -64,6 +64,8 @@ export function generateName(config: RocketConfig, rng: Rng): string {
     themed.push("THE PROBLEM SOLVER", "OOPS ALL BOOSTERS", "CHAOS ENGINE");
   if (config.decorativeParts.some((d) => d.kind === "duck"))
     themed.push("DUCK OF DESTINY", "QUACKSTAR");
+  if (config.shapes.length >= 4)
+    themed.push("THE MODERN ART PIECE", "SCULPTURE GARDEN", "THE FLOAT PARADE");
   if (config.payload.top === "dome")
     themed.push("THE FISHBOWL", "PANORAMA DELUXE");
 

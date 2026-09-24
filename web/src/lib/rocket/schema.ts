@@ -2,6 +2,13 @@ import { z } from "zod";
 import { resolveColor } from "./colors";
 import { createStarterRocket } from "./defaults";
 import { clamp, clampInt, LIMITS } from "./limits";
+import {
+  ATTACH_POINTS,
+  BOOSTER_TOPS,
+  SHAPE_KINDS,
+  SHAPE_MATERIALS,
+  TOP_KINDS,
+} from "./parts";
 import type { RocketConfig } from "./types";
 
 const color = z.string().transform((value, ctx) => {
@@ -54,7 +61,7 @@ export const rocketSchema = z.object({
         height: z.number(),
         radius: z.number(),
         color: color.nullable(),
-        top: z.enum(["cone", "ogive", "blunt"]),
+        top: z.enum(BOOSTER_TOPS),
         propellant: propellant.default("solid"),
         engine,
       }),
@@ -73,7 +80,7 @@ export const rocketSchema = z.object({
     height: z.number(),
     crew: z.number(),
     color: color.nullable(),
-    top: z.enum(["cone", "ogive", "needle", "blunt", "dome", "spike", "none"]),
+    top: z.enum(TOP_KINDS),
     topColor: color.nullable(),
     heatShield: z.boolean().default(false),
     parachutes: z.boolean().default(false),
@@ -113,6 +120,30 @@ export const rocketSchema = z.object({
       }),
     )
     .max(LIMITS.decor),
+  shapes: z
+    .array(
+      z.object({
+        id,
+        label: z.string().max(80).default(""),
+        shape: z.enum(SHAPE_KINDS),
+        attach: z.enum(ATTACH_POINTS),
+        up: z.number(),
+        angle: z.number(),
+        out: z.number(),
+        width: z.number(),
+        height: z.number(),
+        depth: z.number(),
+        pitch: z.number().default(0),
+        yaw: z.number().default(0),
+        roll: z.number().default(0),
+        count: z.number().default(1),
+        mirror: z.boolean().default(false),
+        material: z.enum(SHAPE_MATERIALS).default("paint"),
+        color: color.nullable(),
+      }),
+    )
+    .max(LIMITS.shapes)
+    .default([]),
   appearance: z.object({
     primary: color,
     secondary: color,
@@ -172,6 +203,20 @@ export function sanitizeRocket(config: RocketConfig): RocketConfig {
       ...d,
       count: clampInt(d.count, [1, LIMITS.decorCount]),
       size: clamp(d.size, LIMITS.decorSize),
+    })),
+    shapes: config.shapes.slice(0, LIMITS.shapes).map((s) => ({
+      ...s,
+      label: s.label.slice(0, LIMITS.labelLength),
+      up: clamp(s.up, LIMITS.shapeUp),
+      angle: clamp(s.angle, LIMITS.angle),
+      out: clamp(s.out, LIMITS.shapeOut),
+      width: clamp(s.width, LIMITS.shapeSize),
+      height: clamp(s.height, LIMITS.shapeSize),
+      depth: clamp(s.depth, LIMITS.shapeSize),
+      pitch: clamp(s.pitch, LIMITS.rotation),
+      yaw: clamp(s.yaw, LIMITS.rotation),
+      roll: clamp(s.roll, LIMITS.rotation),
+      count: clampInt(s.count, [1, LIMITS.shapeCount]),
     })),
   };
 }
